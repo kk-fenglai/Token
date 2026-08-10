@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "tokenscope": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/SM3712_sunmi/tokenscope", "tokenscope-mcp"],
+      "env": { "PYTHONUTF8": "1" }
+    }
+  }
+}

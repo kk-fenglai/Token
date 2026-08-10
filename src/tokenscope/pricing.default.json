@@ -1,0 +1,11 @@
+{
+  "last_verified": "2026-08-09",
+  "unit": "usd_per_million_tokens",
+  "families": {
+    "fable":  { "input": 10.0, "output": 50.0, "cache_write": 12.5,  "cache_read": 1.0 },
+    "opus":   { "input": 5.0,  "output": 25.0, "cache_write": 6.25,  "cache_read": 0.5 },
+    "sonnet": { "input": 3.0,  "output": 15.0, "cache_write": 3.75,  "cache_read": 0.3 },
+    "haiku":  { "input": 1.0,  "output": 5.0,  "cache_write": 1.25,  "cache_read": 0.1 },
+    "other":  { "input": 3.0,  "output": 15.0, "cache_write": 3.75,  "cache_read": 0.3 }
+  }
+}

@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+tests/fixtures/
+*.db
+*.db-wal
+*.db-shm
+*.egg-info/
+dist/
+build/

@@ -1,0 +1,11 @@
+{
+  "name": "tokenscope",
+  "owner": { "name": "SM3712_sunmi" },
+  "plugins": [
+    {
+      "name": "tokenscope",
+      "source": "./",
+      "description": "Token usage & cost analytics for Claude Code — MCP tools, /tokenscope reports, local web dashboard"
+    }
+  ]
+}
