@@ -24,7 +24,11 @@ never present them as a real bill.
 
 3. **`projects`** — call `get_projects(range="30d")`; render a table sorted by
    cost: name, tokens, cost, events, sessions, last_active. Offer
-   `get_project_detail(path)` for drill-down.
+   `get_project_detail(path)` for drill-down. Each project folds together every
+   directory sessions were started in (its `cwds`); if the user says two
+   projects are really one (usually a renamed folder), use
+   `get_project_grouping` to find the exact paths and `set_project_alias` to
+   merge them.
 
 4. **`dashboard`** — call `launch_dashboard()`; give the user the returned URL
    (note the UI is in Chinese). If `warning` is present, say it may need a few

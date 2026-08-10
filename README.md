@@ -50,7 +50,9 @@ uvx --from git+https://github.com/SM3712_sunmi/tokenscope tokenscope-web
 
 `get_summary` · `get_trend` · `get_models_distribution` · `get_projects_top` ·
 `get_projects` · `get_project_detail` · `query_logs` · `sync_now` ·
-`get_sync_status` · `get_pricing` · `update_pricing` · `launch_dashboard`
+`get_sync_status` · `get_pricing` · `update_pricing` ·
+`get_project_grouping` · `set_project_alias` · `set_workspace_roots` ·
+`launch_dashboard`
 
 ## 数据与配置
 
@@ -61,10 +63,31 @@ uvx --from git+https://github.com/SM3712_sunmi/tokenscope tokenscope-web
 | 文件 | 说明 |
 |---|---|
 | `tokenscope.db` | 事件库。**这是唯一完整历史**(Claude Code 默认约 30 天清理日志),建议偶尔备份 |
-| `config.json` | `scan_roots`:要扫描的日志根目录列表(默认 `~/.claude/projects`);`port`:看板默认端口。WSL2 侧可加 `\\\\wsl$\\Ubuntu\\home\\<user>\\.claude\\projects`,不存在会自动跳过 |
+| `config.json` | `scan_roots`:要扫描的日志根目录列表(默认 `~/.claude/projects`);`port`:看板默认端口;`workspace_roots` / `project_aliases`:项目归并规则,见下节。WSL2 侧可给 `scan_roots` 加 `\\\\wsl$\\Ubuntu\\home\\<user>\\.claude\\projects`,不存在会自动跳过 |
 | `pricing.json` | 各模型族单价($/Mtok),可直接编辑或用 `update_pricing` 工具修改,立即追溯生效 |
 
 去重键为 `message_id + request_id`(最后写入覆盖),因此重复扫描、双根路径重叠都是安全的。
+
+## 项目归并
+
+Claude Code 记录的是每次会话**启动时所在的目录**,所以同一个项目会以多个 cwd 出现
+(`myapp`、`myapp/backend`、`myapp/frontend/src`……)。TokenScope 在查询时把每个 cwd
+折叠成一个项目:
+
+1. 若 cwd 落在某个 `workspace_roots` 目录之下,取该根下的**第一层目录**作为项目
+   (默认根包含 `~/Desktop`、`~/OneDrive/Desktop`、`~/Documents`、`~/code` 等);
+   不在任何根之下的 cwd 保留完整路径,因此在家目录跑的会话不会吞掉所有项目。
+2. 再套用 `project_aliases` 重写 —— 用于**文件夹改名或移动**的情况,新旧路径没有共同
+   前缀,任何规则都自动合不了。
+
+归并发生在查询时(和定价一样),库里始终保存原始 cwd,所以改配置会**追溯**重新分组,
+无需重新解析,项目详情里的 `cwds` 字段仍可看到被合并的原始目录。
+
+直接编辑 `config.json`,或者让 Claude 调 MCP 工具:
+
+- `get_project_grouping` —— 看当前规则,以及每个项目合并了哪些 cwd
+- `set_project_alias(source, target)` —— 合并改名前后的项目(`target` 传空串则删除别名)
+- `set_workspace_roots(roots)` —— 替换 workspace 根列表
 
 ## 与官方数据的关系
 

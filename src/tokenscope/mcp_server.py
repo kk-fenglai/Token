@@ -20,9 +20,11 @@ except ImportError:  # MCP SDK v1
     from mcp.server.fastmcp import FastMCP
 
 from . import queries
-from .config import ensure_pricing_file, load_config
-from .db import get_conn
+from .config import config_path, ensure_pricing_file, load_config, save_config
+from .db import get_conn, locked_conn
+from .parser import normalize_cwd
 from .pricing import load_pricing, save_pricing, validate_pricing
+from .projects import Folder
 from .sync import service
 
 mcp = FastMCP("tokenscope")
@@ -200,6 +202,88 @@ def _spawn_web(port: int) -> None:
             return
     subprocess.Popen(cmd, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
                      | subprocess.DETACHED_PROCESS, **kwargs)
+
+
+@mcp.tool()
+def get_project_grouping() -> dict:
+    """Show how session directories are folded into projects, and why.
+
+    Claude Code records the exact directory each session started in, so one
+    project can arrive as many cwds (`<proj>`, `<proj>/backend`, ...). Each cwd
+    is folded to the first directory under a matching `workspace_roots` entry,
+    then rewritten by `project_aliases` (for folders that were renamed, whose
+    old and new paths share no prefix).
+
+    Returns the current workspace_roots and project_aliases, plus every project
+    with the raw cwds folded into it — use this to spot projects that should be
+    merged with set_project_alias.
+    """
+    _ensure_ready()
+    cfg = load_config()
+    folder = Folder(cfg)
+    with locked_conn() as conn:
+        rows = conn.execute(
+            "SELECT project_path p, "
+            "SUM(input_tokens+output_tokens+cache_write_tokens+cache_read_tokens) t "
+            "FROM events GROUP BY project_path").fetchall()
+    groups: dict[str, dict] = {}
+    for r in rows:
+        g = groups.setdefault(folder.fold(r["p"]), {"tokens": 0, "cwds": []})
+        g["tokens"] += r["t"] or 0
+        g["cwds"].append(r["p"])
+    return {
+        "workspace_roots": cfg.get("workspace_roots", []),
+        "project_aliases": cfg.get("project_aliases", {}),
+        "config_file": str(config_path()),
+        "projects": [
+            {"path": k, "tokens": v["tokens"], "cwds": sorted(v["cwds"])}
+            for k, v in sorted(groups.items(), key=lambda x: -x[1]["tokens"])
+        ],
+    }
+
+
+@mcp.tool()
+def set_project_alias(source: str, target: str) -> dict:
+    """Merge one project into another, for folders that were renamed or moved.
+
+    `source` is the path to redirect (a project path or a raw cwd from
+    get_project_grouping), `target` is the project path it should count as.
+    Pass an empty `target` to remove an existing alias. Applies retroactively
+    to all history — nothing is re-parsed.
+    """
+    _ensure_ready()
+    cfg = load_config()
+    aliases = dict(cfg.get("project_aliases") or {})
+    src = normalize_cwd(source)
+    if not target.strip():
+        removed = aliases.pop(src, None)
+        if removed is None:
+            return {"ok": False, "error": f"no alias for {src}",
+                    "project_aliases": aliases}
+    else:
+        dst = normalize_cwd(target)
+        if dst == src:
+            return {"ok": False, "error": "source and target are the same path"}
+        aliases[src] = dst
+    cfg["project_aliases"] = aliases
+    save_config(cfg)
+    return {"ok": True, "project_aliases": aliases}
+
+
+@mcp.tool()
+def set_workspace_roots(roots: list[str]) -> dict:
+    """Replace the list of workspace roots — directories whose immediate
+    children are projects (e.g. ~/Desktop, ~/code). A cwd under one of these is
+    folded to its first directory, so `<proj>/backend` counts as `<proj>`.
+    A cwd matching no root keeps its own full path. Applies retroactively."""
+    _ensure_ready()
+    cleaned = [normalize_cwd(r) for r in roots if isinstance(r, str) and r.strip()]
+    if not cleaned:
+        return {"ok": False, "error": "roots must contain at least one path"}
+    cfg = load_config()
+    cfg["workspace_roots"] = cleaned
+    save_config(cfg)
+    return {"ok": True, "workspace_roots": cleaned}
 
 
 def _health_ok(port: int) -> bool:

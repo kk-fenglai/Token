@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 
 from .db import locked_conn
 from .pricing import cost_of, load_pricing
+from .projects import Folder
 
 TOKEN_SUM = ("SUM(input_tokens) i, SUM(output_tokens) o, "
              "SUM(cache_write_tokens) w, SUM(cache_read_tokens) r")
@@ -167,14 +168,18 @@ def _project_rows(start, end):
         ).fetchall()
 
 
-def _merge_projects(rows, pricing):
+def _merge_projects(rows, pricing, folder: Folder | None = None):
+    folder = folder or Folder()
     projects: dict[str, dict] = {}
     for row in rows:
-        pr = projects.setdefault(row["p"], {
-            "path": row["p"], "name": row["name"], "tokens": 0, "cost": 0.0,
+        key = folder.fold(row["p"])
+        pr = projects.setdefault(key, {
+            "path": key, "name": folder.name(key), "tokens": 0, "cost": 0.0,
             "events": 0, "sessions": 0, "last_active": row["last_ts"], "first_seen": row["first_ts"],
             "tokens_detail": {"input": 0, "output": 0, "cache_write": 0, "cache_read": 0},
+            "cwds": set(),
         })
+        pr["cwds"].add(row["p"])
         pr["tokens"] += (row["i"] or 0) + (row["o"] or 0) + (row["w"] or 0) + (row["r"] or 0)
         pr["tokens_detail"]["input"] += row["i"] or 0
         pr["tokens_detail"]["output"] += row["o"] or 0
@@ -196,6 +201,7 @@ def _merge_projects(rows, pricing):
                 pr["name"] = "/".join(parts[-2:]) if len(parts) >= 2 else pr["name"]
     for pr in projects.values():
         pr["cost"] = round(pr["cost"], 4)
+        pr["cwds"] = sorted(pr["cwds"])
     return sorted(projects.values(), key=lambda x: -x["cost"])
 
 
@@ -208,8 +214,9 @@ def projects_top(range_key: str | None, limit: int = 10) -> dict:
 
 def projects_list(range_key: str | None) -> dict:
     pricing = load_pricing()
+    folder = Folder()
     start, end = resolve_range(range_key)
-    items = _merge_projects(_project_rows(start, end), pricing)
+    items = _merge_projects(_project_rows(start, end), pricing, folder)
     # 30-day daily token sparkline per project, one query for all.
     spark_start, _ = resolve_range("30d")
     with locked_conn() as conn:
@@ -220,7 +227,8 @@ def projects_list(range_key: str | None) -> dict:
         ).fetchall()
     spark: dict[str, dict[str, int]] = {}
     for row in rows:
-        spark.setdefault(row["p"], {})[row["d"]] = row["t"] or 0
+        days = spark.setdefault(folder.fold(row["p"]), {})
+        days[row["d"]] = days.get(row["d"], 0) + (row["t"] or 0)
     local_tz = datetime.now().astimezone().tzinfo
     today = datetime.now(local_tz)
     day_keys = [(today - timedelta(days=29 - i)).strftime("%Y-%m-%d") for i in range(30)]
@@ -232,10 +240,13 @@ def projects_list(range_key: str | None) -> dict:
 
 def project_detail(path: str) -> dict | None:
     pricing = load_pricing()
-    rows = [r for r in _project_rows(None, None) if r["p"] == path]
+    folder = Folder()
+    key = folder.fold(path)
+    rows = [r for r in _project_rows(None, None) if folder.fold(r["p"]) == key]
     if not rows:
         return None
-    pr = _merge_projects(rows, pricing)[0]
+    pr = _merge_projects(rows, pricing, folder)[0]
+    cwds = pr["cwds"]
     # this month vs previous month token delta
     local_tz = datetime.now().astimezone().tzinfo
     today = datetime.now(local_tz).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -243,11 +254,12 @@ def project_detail(path: str) -> dict | None:
     prev_start = (month_start - timedelta(days=1)).replace(day=1)
 
     def _tokens_between(a, b):
+        placeholders = ",".join("?" * len(cwds))
         with locked_conn() as conn:
             row = conn.execute(
                 "SELECT SUM(input_tokens + output_tokens + cache_write_tokens + cache_read_tokens) t "
-                "FROM events WHERE project_path = ? AND ts >= ? AND ts < ?",
-                (path, _utc(a), _utc(b)),
+                f"FROM events WHERE project_path IN ({placeholders}) AND ts >= ? AND ts < ?",
+                (*cwds, _utc(a), _utc(b)),
             ).fetchone()
         return row["t"] or 0
 
@@ -259,6 +271,15 @@ def project_detail(path: str) -> dict | None:
     pr["tokens_delta_pct"] = delta_pct
     pr["avg_cost_per_event"] = round(pr["cost"] / pr["events"], 4) if pr["events"] else 0.0
     return pr
+
+
+def _cwds_for(project: str) -> list[str]:
+    """Every raw cwd that folds into `project` (which may itself be a raw cwd)."""
+    folder = Folder()
+    key = folder.fold(project)
+    with locked_conn() as conn:
+        rows = conn.execute("SELECT DISTINCT project_path p FROM events").fetchall()
+    return [r["p"] for r in rows if folder.fold(r["p"]) == key] or [project]
 
 
 def logs(from_: str | None, to_: str | None, model_family: str | None,
@@ -273,7 +294,9 @@ def logs(from_: str | None, to_: str | None, model_family: str | None,
     if model_family:
         clauses.append("model_family = ?"); params.append(model_family)
     if project:
-        clauses.append("project_path = ?"); params.append(project)
+        cwds = _cwds_for(project)
+        clauses.append(f"project_path IN ({','.join('?' * len(cwds))})")
+        params += cwds
     if q:
         clauses.append("(project_name LIKE ? OR session_id LIKE ? OR message_id LIKE ?)")
         like = f"%{q}%"

@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import tempfile
 from importlib.resources import as_file, files
 from pathlib import Path
 
@@ -37,17 +38,39 @@ def pricing_path() -> Path:
     return data_dir() / "pricing.json"
 
 
+_HOME = Path.home()
+
+# Directories whose immediate children are projects. A session's cwd is folded
+# to the first directory under whichever of these contains it, so
+# `<project>/backend` counts as `<project>`. See projects.py.
+DEFAULT_WORKSPACE_ROOTS = [
+    _HOME / "Desktop",
+    _HOME / "OneDrive" / "Desktop",
+    _HOME / "Documents",
+    _HOME / "OneDrive" / "Documents",
+    _HOME / "projects",
+    _HOME / "code",
+    _HOME / "src",
+    _HOME / "dev",
+    _HOME / "repos",
+    _HOME / "workspace",
+]
+
 DEFAULT_CONFIG = {
-    "scan_roots": [str(Path.home() / ".claude" / "projects")],
+    "scan_roots": [str(_HOME / ".claude" / "projects")],
     "port": 8787,
     "sync_interval_seconds": 300,
+    "workspace_roots": [str(p) for p in DEFAULT_WORKSPACE_ROOTS],
+    # {old path: new path} for folders that were renamed or moved — their paths
+    # share no prefix, so no rule can merge them automatically.
+    "project_aliases": {},
 }
 
 
 def load_config() -> dict:
     p = config_path()
     if not p.exists():
-        p.write_text(json.dumps(DEFAULT_CONFIG, indent=2, ensure_ascii=False), encoding="utf-8")
+        save_config(DEFAULT_CONFIG)
         return dict(DEFAULT_CONFIG)
     try:
         cfg = json.loads(p.read_text(encoding="utf-8"))
@@ -56,6 +79,19 @@ def load_config() -> dict:
     merged = dict(DEFAULT_CONFIG)
     merged.update(cfg if isinstance(cfg, dict) else {})
     return merged
+
+
+def save_config(cfg: dict) -> None:
+    p = config_path()
+    fd, tmp = tempfile.mkstemp(dir=p.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2, ensure_ascii=False)
+        os.replace(tmp, p)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
 
 
 def ensure_pricing_file() -> Path:
