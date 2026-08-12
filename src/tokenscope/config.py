@@ -64,6 +64,8 @@ DEFAULT_CONFIG = {
     # {old path: new path} for folders that were renamed or moved — their paths
     # share no prefix, so no rule can merge them automatically.
     "project_aliases": {},
+    # "auto" reads the plan from ~/.claude.json; "manual" pins {plan, monthly_usd}.
+    "subscription": {"mode": "auto"},
 }
 
 

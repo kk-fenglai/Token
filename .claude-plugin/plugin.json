@@ -1,10 +1,10 @@
 {
   "name": "tokenscope",
   "displayName": "TokenScope",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Claude Code token usage & cost analytics: ask about your token consumption, see per-project costs, and open a local web dashboard",
-  "author": { "name": "SM3712_sunmi" },
-  "repository": "https://github.com/SM3712_sunmi/tokenscope",
+  "author": { "name": "kk-fenglai" },
+  "repository": "https://github.com/kk-fenglai/Token",
   "license": "MIT",
   "keywords": ["tokens", "usage", "cost", "analytics", "dashboard"]
 }

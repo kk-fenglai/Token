@@ -14,7 +14,8 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .api import routes_logs, routes_pricing, routes_projects, routes_stats, routes_sync
+from .api import (routes_logs, routes_pricing, routes_projects, routes_scope,
+                  routes_stats, routes_subscription, routes_sync)
 from .config import db_path, ensure_pricing_file, load_config
 from .db import get_conn
 from .sync import service
@@ -42,7 +43,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="TokenScope", lifespan=lifespan)
 
-for r in (routes_stats, routes_logs, routes_projects, routes_sync, routes_pricing):
+for r in (routes_stats, routes_logs, routes_projects, routes_sync, routes_pricing,
+          routes_subscription, routes_scope):
     app.include_router(r.router, prefix="/api")
 
 
@@ -84,7 +86,13 @@ def main() -> None:
     ap = argparse.ArgumentParser(prog="tokenscope-web", description="TokenScope web dashboard")
     ap.add_argument("--port", type=int, default=cfg.get("port", 8787))
     ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--project", nargs="?", const=".", default=None,
+                    help="scope the dashboard to one project directory "
+                         "(bare --project means the current directory)")
     args = ap.parse_args()
+    if args.project:
+        # Passed via env so the reload/worker process inherits it too.
+        os.environ["TOKENSCOPE_PROJECT"] = os.path.abspath(args.project)
     uvicorn.run("tokenscope.web:app", host=args.host, port=args.port)
 
 

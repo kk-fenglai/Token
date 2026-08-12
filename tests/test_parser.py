@@ -18,9 +18,9 @@ def test_model_family():
 
 
 def test_normalize_cwd():
-    assert normalize_cwd("C:\\Users\\davin\\Desktop\\ExamPass") == "c:/Users/davin/Desktop/ExamPass"
-    assert normalize_cwd("/home/davin/exampass/") == "/home/davin/exampass"
-    assert project_name("c:/Users/davin/Desktop/ExamPass") == "ExamPass"
+    assert normalize_cwd("C:\\Users\\alex\\Desktop\\MyApp") == "c:/Users/alex/Desktop/MyApp"
+    assert normalize_cwd("/home/alex/myapp/") == "/home/alex/myapp"
+    assert project_name("c:/Users/alex/Desktop/MyApp") == "MyApp"
 
 
 def test_parse_file_streaming_dedupe_last_wins():
@@ -64,7 +64,7 @@ def _assistant(msg_id, req_id, output, ts):
         "type": "assistant",
         "requestId": req_id,
         "timestamp": ts,
-        "cwd": "C:\\Users\\davin\\Desktop\\ExamPass",
+        "cwd": "C:\\Users\\alex\\Desktop\\MyApp",
         "session_id": "sess-1",
         "message": {
             "id": msg_id,

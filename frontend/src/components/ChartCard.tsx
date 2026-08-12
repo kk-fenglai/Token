@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useI18n } from "../i18n";
 
 interface Props {
   title: string;
@@ -16,6 +17,7 @@ interface Props {
 export default function ChartCard({
   title, subtitle, actions, loading, error, onRetry, empty, emptyText, children, className = "",
 }: Props) {
+  const { t } = useI18n();
   return (
     <section className={`rounded border border-border-card bg-surface-card p-4 shadow-card ${className}`}>
       <div className="mb-3 flex items-start justify-between gap-2">
@@ -27,23 +29,23 @@ export default function ChartCard({
       </div>
       {error ? (
         <div className="flex h-48 flex-col items-center justify-center gap-3 text-sm text-on-surface-variant">
-          <span>加载失败:{error}</span>
+          <span>{t("common.loadFailed", { error })}</span>
           {onRetry && (
             <button
               onClick={onRetry}
               className="rounded border border-primary-container px-3 py-1.5 text-primary-container hover:bg-surface"
             >
-              重试
+              {t("common.retry")}
             </button>
           )}
         </div>
       ) : loading ? (
         <div className="flex h-48 items-center justify-center text-sm text-on-surface-variant">
-          加载中…
+          {t("common.loading")}
         </div>
       ) : empty ? (
         <div className="flex h-48 items-center justify-center text-sm text-on-surface-variant">
-          {emptyText ?? "暂无数据 — 使用 Claude Code 后点击 Sync Now"}
+          {emptyText ?? t("common.empty")}
         </div>
       ) : (
         children

@@ -1,17 +1,20 @@
 import { NavLink } from "react-router-dom";
+import { useI18n } from "../i18n";
 
 const NAV = [
-  { to: "/", icon: "dashboard", label: "Dashboard", end: true },
-  { to: "/logs", icon: "receipt_long", label: "Usage Logs", end: false },
-  { to: "/projects", icon: "paid", label: "Project Costs", end: false },
+  { to: "/", icon: "dashboard", labelKey: "nav.dashboard", end: true },
+  { to: "/logs", icon: "receipt_long", labelKey: "nav.logs", end: false },
+  { to: "/projects", icon: "paid", labelKey: "nav.projects", end: false },
+  { to: "/guide", icon: "school", labelKey: "nav.guide", end: false },
 ];
 
 export default function Sidebar() {
+  const { t } = useI18n();
   return (
     <aside className="fixed inset-y-0 left-0 flex w-[280px] flex-col border-r border-border-card bg-surface-card">
       <div className="px-6 pb-4 pt-6">
         <h1 className="text-[22px] font-bold text-primary-container">TokenScope</h1>
-        <p className="mt-0.5 text-sm text-on-surface-variant">个人 Token 消耗仪表盘</p>
+        <p className="mt-0.5 text-sm text-on-surface-variant">{t("nav.tagline")}</p>
       </div>
       <nav className="mt-2 flex flex-col gap-1 px-4">
         {NAV.map((item) => (
@@ -28,12 +31,12 @@ export default function Sidebar() {
             }
           >
             <span className="material-symbols-outlined">{item.icon}</span>
-            {item.label}
+            {t(item.labelKey)}
           </NavLink>
         ))}
       </nav>
       <div className="mt-auto border-t border-border-card px-6 py-4 text-xs text-outline">
-        本地运行 · 数据不出本机
+        {t("nav.footer")}
       </div>
     </aside>
   );

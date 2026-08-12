@@ -1,10 +1,12 @@
 import { useNavigate } from "react-router-dom";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { ProjectTopItem } from "../api/types";
+import { useI18n } from "../i18n";
 import { formatTokens, formatUSD } from "../lib/format";
 
 export default function ProjectBars({ items }: { items: ProjectTopItem[] }) {
   const navigate = useNavigate();
+  const { t } = useI18n();
   const data = items.map((x) => ({ ...x }));
   const height = Math.max(220, data.length * 36 + 20);
 
@@ -25,7 +27,7 @@ export default function ProjectBars({ items }: { items: ProjectTopItem[] }) {
           contentStyle={{ background: "#1a1c1e", border: "none", borderRadius: 8, color: "#fff", fontSize: 12 }}
           formatter={(value: number, _name, entry) => [
             `${formatTokens(value)} tokens · ${formatUSD((entry?.payload as ProjectTopItem)?.cost ?? 0)}`,
-            "本月消耗",
+            t("dashboard.projectsTopTooltip"),
           ]}
         />
         <Bar

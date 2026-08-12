@@ -1,12 +1,14 @@
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import type { ModelItem } from "../api/types";
-import { FAMILY_COLORS, FAMILY_LABELS, formatTokens, formatUSD } from "../lib/format";
+import { useI18n } from "../i18n";
+import { FAMILY_COLORS, formatTokens, formatUSD } from "../lib/format";
 
 export default function ModelDonut({ items, mode }: { items: ModelItem[]; mode: "tokens" | "cost" }) {
+  const { t } = useI18n();
   const data = items
     .filter((x) => (mode === "tokens" ? x.tokens > 0 : x.cost > 0))
     .map((x) => ({
-      name: FAMILY_LABELS[x.family] ?? x.family,
+      name: t(`family.${x.family}`),
       family: x.family,
       value: mode === "tokens" ? x.tokens : x.cost,
       share: mode === "tokens" ? x.token_share : x.cost_share,

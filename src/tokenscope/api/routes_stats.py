@@ -7,8 +7,8 @@ router = APIRouter()
 
 
 @router.get("/summary/cards")
-def summary_cards():
-    data = queries.summary_cards()
+def summary_cards(project: str | None = None):
+    data = queries.summary_cards(project)
     data["last_sync_at"] = get_meta("last_sync_at")
     return data
 
@@ -16,13 +16,14 @@ def summary_cards():
 @router.get("/trend")
 def trend(granularity: str = Query("day", pattern="^(day|month)$"),
           days: int = Query(30, ge=1, le=366),
-          months: int = Query(12, ge=1, le=36)):
-    return queries.trend(granularity, days, months)
+          months: int = Query(12, ge=1, le=36),
+          project: str | None = None):
+    return queries.trend(granularity, days, months, project)
 
 
 @router.get("/models")
-def models(range: str = Query("month")):
-    return queries.models_distribution(range)
+def models(range: str = Query("month"), project: str | None = None):
+    return queries.models_distribution(range, project)
 
 
 @router.get("/projects/top")

@@ -3,12 +3,15 @@ import {
   Bar, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import type { TrendPoint } from "../api/types";
+import { useI18n } from "../i18n";
 import { formatTokens, formatUSD, SERIES_COLORS, SERIES_LABELS } from "../lib/format";
 
 const SERIES = ["input", "output", "cache_write", "cache_read"] as const;
 
 export default function TrendChart({ points, granularity }: { points: TrendPoint[]; granularity: "day" | "month" }) {
+  const { t } = useI18n();
   const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const costName = t("common.virtualCost");
 
   const data = points.map((p) => ({
     ...p,
@@ -33,7 +36,7 @@ export default function TrendChart({ points, granularity }: { points: TrendPoint
         <Tooltip
           contentStyle={{ background: "#1a1c1e", border: "none", borderRadius: 8, color: "#fff", fontSize: 12 }}
           formatter={(value: number, name: string) =>
-            name === "虚拟成本" ? [formatUSD(value), name] : [formatTokens(value), name]
+            name === costName ? [formatUSD(value), name] : [formatTokens(value), name]
           }
         />
         <Legend
@@ -58,7 +61,7 @@ export default function TrendChart({ points, granularity }: { points: TrendPoint
         <Line
           yAxisId="cost"
           dataKey="cost"
-          name="虚拟成本"
+          name={costName}
           stroke="#974800"
           strokeWidth={2}
           dot={false}

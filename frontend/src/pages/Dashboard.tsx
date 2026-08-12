@@ -1,50 +1,77 @@
 import { useState } from "react";
-import type { ModelsResponse, ProjectTopItem, RangeKey, SummaryCards, TrendPoint } from "../api/types";
+import type { ModelsResponse, ProjectShare, ProjectTopItem, RangeKey, SavingsReport, SummaryCards, TrendPoint } from "../api/types";
+import { useScope } from "../api/scope";
 import { useApi } from "../api/useApi";
 import ModelDonut from "../charts/ModelDonut";
 import ProjectBars from "../charts/ProjectBars";
 import TrendChart from "../charts/TrendChart";
 import ChartCard from "../components/ChartCard";
+import ModelTable from "../components/ModelTable";
+import ProjectShareCard from "../components/ProjectShareCard";
+import SavingsPanel from "../components/SavingsPanel";
 import StatCard from "../components/StatCard";
 import TimeRangeSelector from "../components/TimeRangeSelector";
+import { useI18n } from "../i18n";
 import { formatTokens, formatUSD } from "../lib/format";
 
-const VIRTUAL_COST_NOTE = "等效 API 成本(虚拟),套餐实际为固定月费";
-
 export default function Dashboard() {
+  const { t } = useI18n();
+  const { project, withScope, ready } = useScope();
   const [granularity, setGranularity] = useState<"day" | "month">("day");
   const [donutRange, setDonutRange] = useState<RangeKey>("month");
   const [donutMode, setDonutMode] = useState<"tokens" | "cost">("tokens");
+  const [subKey, setSubKey] = useState(0);
 
-  const cards = useApi<SummaryCards>("/api/summary/cards");
-  const trend = useApi<{ points: TrendPoint[] }>(
-    granularity === "day" ? "/api/trend?granularity=day&days=30" : "/api/trend?granularity=month&months=12",
+  // Hold every request until the scope is resolved, so a scoped dashboard
+  // never flashes account-wide numbers first.
+  const cards = useApi<SummaryCards>(ready ? withScope("/api/summary/cards") : null, [subKey]);
+  const savings = useApi<SavingsReport>(ready && !project ? "/api/subscription" : null, [subKey]);
+  const share = useApi<ProjectShare>(
+    ready && project ? `/api/projects/share?project=${encodeURIComponent(project)}` : null,
   );
-  const models = useApi<ModelsResponse>(`/api/models?range=${donutRange}`);
-  const projects = useApi<{ items: ProjectTopItem[] }>("/api/projects/top?range=month&limit=10");
+  const trend = useApi<{ points: TrendPoint[] }>(ready ? withScope(
+    granularity === "day" ? "/api/trend?granularity=day&days=30" : "/api/trend?granularity=month&months=12",
+  ) : null);
+  const models = useApi<ModelsResponse>(ready ? withScope(`/api/models?range=${donutRange}`) : null);
+  // Top-10 stays account-wide: it exists to compare projects against each other.
+  const projects = useApi<{ items: ProjectTopItem[] }>(ready ? "/api/projects/top?range=month&limit=10" : null);
+
+  const costNote = t("dashboard.virtualCostNote");
 
   return (
     <div className="space-y-6">
       {/* F1 概览指标卡片 */}
       <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-        <StatCard label="今日 Token 总量" icon="token"
+        <StatCard label={t("dashboard.todayTokens")} icon="token"
           value={cards.data ? formatTokens(cards.data.today.tokens.total) : "…"}
-          note={cards.data ? `${cards.data.today.events} 次请求` : undefined} />
-        <StatCard label="今日虚拟成本" icon="attach_money"
+          note={cards.data ? t("dashboard.requests", { n: cards.data.today.events }) : undefined} />
+        <StatCard label={t("dashboard.todayCost")} icon="attach_money"
           value={cards.data ? formatUSD(cards.data.today.cost.total) : "…"}
-          note={VIRTUAL_COST_NOTE} />
-        <StatCard label="本月 Token 总量" icon="calendar_month"
+          note={costNote} />
+        <StatCard label={t("dashboard.monthTokens")} icon="calendar_month"
           value={cards.data ? formatTokens(cards.data.month.tokens.total) : "…"}
-          note={cards.data ? `${cards.data.month.events} 次请求` : undefined} />
-        <StatCard label="本月虚拟成本" icon="payments"
+          note={cards.data ? t("dashboard.requests", { n: cards.data.month.events }) : undefined} />
+        <StatCard label={t("dashboard.monthCost")} icon="payments"
           value={cards.data ? formatUSD(cards.data.month.cost.total) : "…"}
-          note={VIRTUAL_COST_NOTE} />
+          note={cards.data?.savings.comparable && !project
+            ? t("dashboard.monthCostSaved", {
+                plan: cards.data.savings.plan_label,
+                fee: cards.data.savings.monthly_fee,
+                saved: formatUSD(cards.data.savings.saved),
+              })
+            : costNote}
+          accent={cards.data?.savings.comparable && !project ? "text-success" : undefined} />
       </div>
+
+      {/* 限定项目时显示该项目占比,否则显示账户级订阅节省 */}
+      {project
+        ? share.data && <ProjectShareCard data={share.data} />
+        : savings.data && <SavingsPanel report={savings.data} onChanged={() => setSubKey((k) => k + 1)} />}
 
       {/* F2 消耗趋势 */}
       <ChartCard
-        title={granularity === "day" ? "近 30 天消耗趋势" : "近 12 个月消耗趋势"}
-        subtitle="堆叠柱 = token 分类;右轴折线 = 虚拟成本;点击图例可切换序列"
+        title={t(granularity === "day" ? "dashboard.trendDay" : "dashboard.trendMonth")}
+        subtitle={t("dashboard.trendSubtitle")}
         loading={trend.loading}
         error={trend.error}
         onRetry={trend.retry}
@@ -54,7 +81,7 @@ export default function Dashboard() {
             {(["day", "month"] as const).map((g) => (
               <button key={g} onClick={() => setGranularity(g)}
                 className={`whitespace-nowrap rounded px-3 py-1 ${granularity === g ? "bg-primary-container font-semibold text-on-primary" : "text-on-surface-variant hover:bg-surface"}`}>
-                {g === "day" ? "逐日" : "逐月"}
+                {t(g === "day" ? "dashboard.daily" : "dashboard.monthly")}
               </button>
             ))}
           </div>
@@ -66,8 +93,8 @@ export default function Dashboard() {
       <div className="grid gap-6 xl:grid-cols-2">
         {/* F3 模型分布 */}
         <ChartCard
-          title="模型分布"
-          subtitle="Opus 单价约为 Sonnet 五倍,成本占比与用量占比会显著不同"
+          title={t("dashboard.modelDist")}
+          subtitle={t("dashboard.modelDistSubtitle")}
           loading={models.loading}
           error={models.error}
           onRetry={models.retry}
@@ -78,7 +105,7 @@ export default function Dashboard() {
                 {(["tokens", "cost"] as const).map((m) => (
                   <button key={m} onClick={() => setDonutMode(m)}
                     className={`whitespace-nowrap rounded px-3 py-1 ${donutMode === m ? "bg-primary-container font-semibold text-on-primary" : "text-on-surface-variant hover:bg-surface"}`}>
-                    {m === "tokens" ? "用量" : "成本"}
+                    {t(m === "tokens" ? "dashboard.byUsage" : "dashboard.byCost")}
                   </button>
                 ))}
               </div>
@@ -91,8 +118,8 @@ export default function Dashboard() {
 
         {/* F4 项目归因 Top 10 */}
         <ChartCard
-          title="项目归因 Top 10(本月)"
-          subtitle="按会话 cwd 归因;点击条形跳转项目详情"
+          title={t("dashboard.projectsTop")}
+          subtitle={t("dashboard.projectsTopSubtitle")}
           loading={projects.loading}
           error={projects.error}
           onRetry={projects.retry}
@@ -101,6 +128,28 @@ export default function Dashboard() {
           {projects.data && <ProjectBars items={projects.data.items} />}
         </ChartCard>
       </div>
+
+      {/* 精确到模型:调用次数 / 单价 / 费用 */}
+      <ChartCard
+        title={t("dashboard.modelTable")}
+        subtitle={
+          models.data
+            ? t("dashboard.modelTableSubtitle", {
+                range: t(`range.${donutRange === "all" ? "allTime" : donutRange}`),
+                models: models.data.totals.model_count,
+                calls: models.data.totals.events.toLocaleString(),
+                cost: formatUSD(models.data.totals.cost),
+              })
+            : t("dashboard.modelTableFallback")
+        }
+        loading={models.loading}
+        error={models.error}
+        onRetry={models.retry}
+        empty={!models.data?.models.length}
+        actions={<TimeRangeSelector value={donutRange} onChange={setDonutRange} options={["today", "month", "all"]} />}
+      >
+        {models.data && <ModelTable items={models.data.models} />}
+      </ChartCard>
     </div>
   );
 }

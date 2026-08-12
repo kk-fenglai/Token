@@ -21,6 +21,9 @@ export default {
         error: "#ba1a1a",
         "error-container": "#ffdad6",
         "on-error-container": "#93000a",
+        success: "#1b6d43",
+        "success-container": "#d5f1e0",
+        "on-success-container": "#04452a",
         // chart series colors (DESIGN.md data-centric palette)
         "chart-input": "#0F6EAD",
         "chart-output": "#E8833A",

@@ -19,7 +19,7 @@ try:  # MCP SDK v2
 except ImportError:  # MCP SDK v1
     from mcp.server.fastmcp import FastMCP
 
-from . import queries
+from . import queries, subscription
 from .config import config_path, ensure_pricing_file, load_config, save_config
 from .db import get_conn, locked_conn
 from .parser import normalize_cwd
@@ -50,7 +50,7 @@ def _ensure_ready() -> None:
 
 
 @mcp.tool()
-def get_summary() -> dict:
+def get_summary(project: str | None = None) -> dict:
     """Token usage summary cards: today and current-month totals.
 
     Returns tokens by type (input/output/cache_write/cache_read), virtual cost
@@ -58,31 +58,44 @@ def get_summary() -> dict:
     computed from the editable pricing file (equivalent API price —
     subscription plans have no real per-token bill). The first tool call after
     server start may be slow (initial transcript sync).
+
+    Pass `project` (a project path or any session directory under it) to narrow
+    the cards to one project. The `savings` block stays account-wide either way
+    — one fee covers the whole account — so do not present it as this project's
+    saving; use get_project_share for the per-project framing.
     """
     _ensure_ready()
-    return {**queries.summary_cards(), "sync": service.status()}
+    return {**queries.summary_cards(project), "sync": service.status()}
 
 
 @mcp.tool()
-def get_trend(granularity: str = "day", days: int = 30, months: int = 12) -> dict:
+def get_trend(granularity: str = "day", days: int = 30, months: int = 12,
+              project: str | None = None) -> dict:
     """Token/cost time series. granularity: "day" (last `days`, 1-366) or "month" (last `months`, 1-36).
 
-    Each point has bucket, input/output/cache_write/cache_read tokens, and virtual cost USD.
+    Each point has bucket, input/output/cache_write/cache_read tokens, and
+    virtual cost USD. Pass `project` to restrict the series to one project.
     """
     _ensure_ready()
-    return queries.trend(granularity, days, months)
+    return queries.trend(granularity, days, months, project)
 
 
 @mcp.tool()
-def get_models_distribution(range: str = "30d") -> dict:
-    """Token & cost breakdown by model family (fable/opus/sonnet/haiku/other).
+def get_models_distribution(range: str = "30d", project: str | None = None) -> dict:
+    """Token & cost breakdown by model, two ways.
+
+    `items` rolls up to family (fable/opus/sonnet/haiku/other); `models` is the
+    exact model id (claude-opus-5, claude-opus-4-8, ...) with call count,
+    token split, unit rates applied, cost, and average cost per call.
 
     Valid ranges: "today", "7d", "30d", "month" (calendar month to date), "all".
     Includes token_share vs cost_share — they often differ sharply because
     output tokens cost ~5x input and cache reads are cheap.
+
+    Pass `project` to restrict the breakdown to one project.
     """
     _ensure_ready()
-    return queries.models_distribution(range)
+    return queries.models_distribution(range, project)
 
 
 @mcp.tool()
@@ -157,9 +170,18 @@ def get_pricing() -> dict:
 
 @mcp.tool()
 def update_pricing(pricing: dict) -> dict:
-    """Replace the pricing document. Must contain `families` with ALL five
-    families (fable/opus/sonnet/haiku/other), each with all four numeric rates
-    (input/output/cache_write/cache_read, USD per million tokens, >= 0).
+    """Replace the pricing document — this is a FULL REPLACE, not a merge.
+
+    Must contain `families` with ALL five families (fable/opus/sonnet/haiku/
+    other), each with all four numeric rates (input/output/cache_write/
+    cache_read, USD per million tokens, >= 0).
+
+    An optional `models` map overrides individual model ids (partial overrides
+    are allowed; unset rates fall back to the family). ALWAYS call get_pricing
+    first and carry over the existing `models` section unchanged unless the
+    user asked to change it — omitting it silently deletes their per-model
+    rates.
+
     Edits apply retroactively to all history at query time.
     Returns {ok: true} or {ok: false, errors: [...]} without saving."""
     _ensure_ready()
@@ -170,7 +192,70 @@ def update_pricing(pricing: dict) -> dict:
     return {"ok": True, "pricing": load_pricing()}
 
 
-def _spawn_web(port: int) -> None:
+@mcp.tool()
+def get_subscription_savings() -> dict:
+    """How much the subscription saved versus paying API list price.
+
+    The plan is auto-detected from ~/.claude.json (`oauthAccount`: org type +
+    rate limit tier), so no setup is needed; `subscription.source` says whether
+    it was detected or pinned manually. Returns the detected plan and fee,
+    this month's savings (with an end-of-month projection), and a month-by-month
+    cumulative timeline.
+
+    Months with no transcripts left on disk are charged their fee against $0 of
+    recorded usage (Claude Code prunes logs after ~30 days), so `total_saved` is
+    a floor — check `months_missing_data`. Meaningless on pay-as-you-go API
+    billing: `comparable` is false there.
+    """
+    _ensure_ready()
+    return queries.savings_report()
+
+
+@mcp.tool()
+def set_subscription(mode: str = "auto", plan: str | None = None,
+                     monthly_usd: float | None = None) -> dict:
+    """Pin the subscription plan, or hand control back to auto-detection.
+
+    mode="auto" clears the pin and re-detects from ~/.claude.json.
+    mode="manual" requires `plan`: one of pro, max5, max20, team, api
+    ("api" = pay-as-you-go, disables the savings comparison). `monthly_usd`
+    optionally overrides the list price — use it for annual billing, multiple
+    seats, or a plan this tool does not know about.
+    """
+    _ensure_ready()
+    try:
+        subscription.set_subscription(mode, plan, monthly_usd)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    return {"ok": True, **queries.savings_report()}
+
+
+@mcp.tool()
+def get_project_share(project: str) -> dict:
+    """What one project cost THIS MONTH, against the account and the plan fee.
+
+    `project` is a project path or any session directory under it — both fold
+    to the same project. Pass the current working directory to answer "how much
+    has this project cost me".
+
+    Returns the project's month-to-date tokens/cost/calls, its share of the
+    whole account's month, a per-model breakdown, and `pct_of_fee` — how much of
+    the monthly subscription fee this project alone consumed at API-equivalent
+    price (over 100% means this one project already paid the plan back).
+
+    Do NOT describe this as the project "saving" money: one fee covers the whole
+    account, so per-project savings are meaningless. On pay-as-you-go API
+    billing `comparable` is false and `pct_of_fee` is null — there the cost IS
+    the real bill for that project.
+
+    Differs from get_project_detail, which is all-time totals with no account
+    or fee comparison.
+    """
+    _ensure_ready()
+    return queries.project_share(project)
+
+
+def _spawn_web(port: int, project: str | None = None) -> None:
     """Start the dashboard so it outlives this MCP server.
 
     MCP hosts kill the server's whole process tree on shutdown — on Windows via
@@ -181,10 +266,15 @@ def _spawn_web(port: int) -> None:
     (web.main() guards against its None std streams). If pythonw is missing,
     fall back to a plain detached child (dashboard then lives only as long as
     this server — better than a stray console window).
+
+    `project` is passed as an argument rather than an env var on purpose: the
+    WMI-spawned process does not inherit this process's environment.
     """
     kwargs: dict = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL,
                     "stderr": subprocess.DEVNULL}
     cmd = [sys.executable, "-m", "tokenscope.web", "--port", str(port)]
+    if project:
+        cmd += ["--project", project]
     if sys.platform != "win32":
         subprocess.Popen(cmd, start_new_session=True, **kwargs)
         return
@@ -193,10 +283,14 @@ def _spawn_web(port: int) -> None:
     pyw = Path(sys.executable).with_name("pythonw.exe")
     if pyw.exists():
         cmdline = f'"{pyw}" -m tokenscope.web --port {port}'
+        if project:
+            cmdline += f' --project "{project}"'
+        # The whole line sits inside a PowerShell single-quoted string, where a
+        # literal apostrophe must be doubled — project paths can contain one.
         ps = subprocess.run(
             ["powershell", "-NoProfile", "-Command",
              "Invoke-CimMethod -ClassName Win32_Process -MethodName Create "
-             f"-Arguments @{{CommandLine='{cmdline}'}} | Out-Null"],
+             f"-Arguments @{{CommandLine='{cmdline.replace(chr(39), chr(39) * 2)}'}} | Out-Null"],
             creationflags=subprocess.CREATE_NO_WINDOW, timeout=30, **kwargs)
         if ps.returncode == 0:
             return
@@ -295,25 +389,41 @@ def _health_ok(port: int) -> bool:
 
 
 @mcp.tool()
-def launch_dashboard(port: int | None = None) -> dict:
-    """Start the TokenScope web dashboard (charts UI, Chinese labels) in the
-    background and return its URL. If it is already running on the port, just
-    returns the URL. Default port comes from config (8787)."""
+def launch_dashboard(port: int | None = None, project: str | None = None) -> dict:
+    """Start the TokenScope web dashboard in the background and return its URL.
+
+    The UI is available in Chinese, English and French (switcher in the top
+    right; it picks the browser language on first open). Default port comes
+    from config (8787).
+
+    Pass `project` — a project path or any session directory under it — to open
+    the dashboard scoped to that one project: every panel then shows only that
+    project's usage, and the subscription savings panel is replaced by "what
+    share of the monthly fee this project used up". Use the current working
+    directory when the user asks about "this project". Omit it for the
+    account-wide view.
+
+    Scoping only applies when the dashboard actually starts: if it is already
+    running on that port, `already_running` is true and the existing scope is
+    untouched — say so rather than claiming the scope was applied.
+    """
     _ensure_ready()
     if port is None:
         port = int(load_config().get("port", 8787))
     url = f"http://127.0.0.1:{port}"
+    scope = queries.scope_info(project) if project else None
     if _health_ok(port):
-        return {"url": url, "already_running": True}
+        return {"url": url, "already_running": True, "scope": scope,
+                "note": "dashboard was already running; its existing scope was kept"}
 
-    _spawn_web(port)
+    _spawn_web(port, project)
 
     import time
     for _ in range(20):
         time.sleep(0.5)
         if _health_ok(port):
-            return {"url": url, "already_running": False}
-    return {"url": url, "already_running": False,
+            return {"url": url, "already_running": False, "scope": scope}
+    return {"url": url, "already_running": False, "scope": scope,
             "warning": "server did not report healthy within 10s; it may still be starting"}
 
 

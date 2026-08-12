@@ -1,9 +1,13 @@
 import { useContext, useState } from "react";
 import { SyncContext } from "../api/useApi";
+import { useI18n } from "../i18n";
 import { formatRelative } from "../lib/format";
+import LocaleSwitcher from "./LocaleSwitcher";
+import ScopeSelector from "./ScopeSelector";
 
 export default function TopBar({ title }: { title: string }) {
   const { bump } = useContext(SyncContext);
+  const { t, tag } = useI18n();
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<string | null>(null);
 
@@ -28,9 +32,15 @@ export default function TopBar({ title }: { title: string }) {
       <div className="flex items-center gap-4">
         {lastSync && (
           <span className="text-xs text-on-surface-variant">
-            上次同步 {formatRelative(lastSync)}
+            {t("common.lastSync", {
+              time: formatRelative(lastSync, tag, {
+                never: t("common.never"), justNow: t("common.justNow"),
+              }),
+            })}
           </span>
         )}
+        <ScopeSelector />
+        <LocaleSwitcher />
         <button
           onClick={syncNow}
           disabled={syncing}
@@ -39,7 +49,7 @@ export default function TopBar({ title }: { title: string }) {
           <span className={`material-symbols-outlined ${syncing ? "animate-spin" : ""}`}>
             sync
           </span>
-          {syncing ? "同步中…" : "Sync Now"}
+          {syncing ? t("common.syncing") : t("common.syncNow")}
         </button>
       </div>
     </header>
