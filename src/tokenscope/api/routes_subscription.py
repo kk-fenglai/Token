@@ -11,6 +11,12 @@ def get_subscription():
     return queries.savings_report()
 
 
+@router.get("/billing/monthly")
+def get_monthly_billing():
+    """月度账单:每月 tokens、调用数、按 API 价成本、月费与净省。"""
+    return queries.monthly_bills()
+
+
 @router.put("/subscription")
 def put_subscription(body: dict):
     """Pin the plan (`mode: "manual"`) or hand control back to detection."""

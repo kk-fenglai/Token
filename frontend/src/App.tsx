@@ -5,6 +5,7 @@ import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import { useI18n } from "./i18n";
 import Dashboard from "./pages/Dashboard";
+import MonthlyBilling from "./pages/MonthlyBilling";
 import ProjectCosts from "./pages/ProjectCosts";
 import ProjectDetail from "./pages/ProjectDetail";
 import TokenGuide from "./pages/TokenGuide";
@@ -13,6 +14,7 @@ import UsageLogs from "./pages/UsageLogs";
 const TITLE_KEYS: Record<string, string> = {
   "/": "nav.dashboard",
   "/logs": "nav.logs",
+  "/billing": "nav.billing",
   "/projects": "nav.projects",
   "/projects/detail": "nav.projectDetail",
   "/guide": "nav.guide",
@@ -31,6 +33,7 @@ function Shell() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/logs" element={<UsageLogs />} />
+            <Route path="/billing" element={<MonthlyBilling />} />
             <Route path="/projects" element={<ProjectCosts />} />
             <Route path="/projects/detail" element={<ProjectDetail />} />
             <Route path="/guide" element={<TokenGuide />} />

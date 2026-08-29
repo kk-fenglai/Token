@@ -37,6 +37,28 @@ Three ways to use it, installable together or separately:
 
 ---
 
+## Platform mode (AIPM)
+
+TokenScope can also act as the **usage agent** for the AIPM platform
+(`Desktop/project_mange`). Local mode is unchanged; platform mode activates only
+when `config.json` contains:
+
+```json
+{
+  "server_url": "http://localhost:4000",
+  "api_token": "aipm_xxx",
+  "machine_id": "my-laptop"
+}
+```
+
+Then `tokenscope-push` (or the MCP tool `platform_push`) parses local
+transcripts and uploads events to the platform — idempotent server-side, with
+directory→project mapping pulled from the server (or set locally via
+`project_mappings`). `set_session_requirement(key, session_id)` binds a session
+to a platform requirement for per-requirement cost attribution.
+
+---
+
 ## Why this exists
 
 If you are on a Claude subscription (Pro or Max), your Claude Code usage is a
@@ -458,6 +480,10 @@ python -m venv .venv
 .\scripts\start.ps1   # production mode, single process on :8787
 .\scripts\dev.ps1     # dev mode: uvicorn --reload + vite dev server
 ```
+
+On macOS, `scripts/start.command` is the double-clickable equivalent of
+`start.ps1` (run `chmod +x scripts/start.command` once). Both launchers detect
+an already-running instance on :8787 and just open the browser in that case.
 
 Requires Python 3.10+. Runtime dependencies are FastAPI, uvicorn, pydantic and
 the MCP SDK. The frontend is React 18 + TypeScript + Vite + Tailwind + Recharts.

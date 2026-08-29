@@ -4,6 +4,7 @@ import { useI18n } from "../i18n";
 const NAV = [
   { to: "/", icon: "dashboard", labelKey: "nav.dashboard", end: true },
   { to: "/logs", icon: "receipt_long", labelKey: "nav.logs", end: false },
+  { to: "/billing", icon: "calendar_month", labelKey: "nav.billing", end: false },
   { to: "/projects", icon: "paid", labelKey: "nav.projects", end: false },
   { to: "/guide", icon: "school", labelKey: "nav.guide", end: false },
 ];

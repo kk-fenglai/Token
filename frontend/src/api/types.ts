@@ -98,6 +98,22 @@ export interface SavingsReport {
   timeline: SavingsTimeline;
 }
 
+export interface BillingMonth extends SavingsMonth {
+  tokens: number;
+  events: number;
+}
+
+export interface MonthlyBilling {
+  subscription: SubscriptionInfo;
+  current: SavingsCurrent;
+  timeline: Omit<SavingsTimeline, "points"> & {
+    points: BillingMonth[];
+    /** Subscribed months only, same window as total_api_cost. */
+    total_tokens: number;
+    total_events: number;
+  };
+}
+
 export interface ScopeInfo {
   project: string;
   name: string;

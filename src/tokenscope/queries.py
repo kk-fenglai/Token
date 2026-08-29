@@ -567,6 +567,32 @@ def savings_report() -> dict:
     }
 
 
+def monthly_bills() -> dict:
+    """月度账单:savings_report 的时间线,并入每月 tokens / 调用次数。
+
+    点位按月份升序;缺数据的订阅月 tokens/events 为 0(日志已被清理,
+    与 data_missing 标记一致)。"""
+    info = subscription.plan_info()
+    months = monthly_costs()
+    report = {
+        "subscription": info,
+        "current": subscription.savings(
+            next((m["cost"] for m in months
+                  if m["month"] == datetime.now().astimezone().strftime("%Y-%m")), 0.0),
+            info),
+        "timeline": subscription.savings_timeline(months, info),
+    }
+    by_month = {m["month"]: m for m in months}
+    for p in report["timeline"]["points"]:
+        src = by_month.get(p["month"])
+        p["tokens"] = src["tokens"] if src else 0
+        p["events"] = src["events"] if src else 0
+    tl = report["timeline"]
+    tl["total_tokens"] = sum(p["tokens"] for p in tl["points"] if p["subscribed"])
+    tl["total_events"] = sum(p["events"] for p in tl["points"] if p["subscribed"])
+    return report
+
+
 def logs_iter(from_: str | None, to_: str | None, model_family: str | None,
               project: str | None, q: str | None, model: str | None = None):
     """Yield all matching log rows (for CSV export)."""
