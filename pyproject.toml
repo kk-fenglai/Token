@@ -19,6 +19,7 @@ dependencies = [
 [project.scripts]
 tokenscope-mcp = "tokenscope.mcp_server:main"
 tokenscope-web = "tokenscope.web:main"
+tokenscope-push = "tokenscope.platform_sync:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]

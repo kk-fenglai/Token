@@ -160,6 +160,37 @@ def get_sync_status() -> dict:
 
 
 @mcp.tool()
+def platform_push() -> dict:
+    """AIPM platform mode: parse local Claude Code transcripts and push usage
+    events to the team platform (requires server_url + api_token in config.json).
+    Idempotent server-side; safe to call repeatedly."""
+    _ensure_ready()
+    from .platform_sync import push_once
+    return push_once()
+
+
+@mcp.tool()
+def platform_status() -> dict:
+    """Whether AIPM platform mode is configured, plus current push cursor."""
+    from .config import load_config as _lc
+    from .db import locked_conn as _lk
+    from .platform_sync import platform_enabled
+    cfg = _lc()
+    with _lk() as conn:
+        row = conn.execute("SELECT value FROM meta WHERE key='platform_last_event_id'").fetchone()
+    return {"enabled": platform_enabled(cfg), "server_url": cfg.get("server_url"),
+            "cursor": int(row["value"]) if row else 0}
+
+
+@mcp.tool()
+def set_session_requirement(requirement_key: str, session_id: str) -> dict:
+    """Bind a Claude Code session to a platform requirement (e.g. ACME-WEB-042)
+    so its usage is attributed to that requirement. Platform mode only."""
+    from .platform_sync import bind_session
+    return bind_session(requirement_key, session_id)
+
+
+@mcp.tool()
 def get_pricing() -> dict:
     """Current pricing document: USD per million tokens for each model family
     (fable/opus/sonnet/haiku/other) x rate (input/output/cache_write/cache_read).
