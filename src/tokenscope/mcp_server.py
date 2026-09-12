@@ -19,7 +19,7 @@ try:  # MCP SDK v2
 except ImportError:  # MCP SDK v1
     from mcp.server.fastmcp import FastMCP
 
-from . import queries, subscription
+from . import insights, queries, subscription
 from .config import config_path, ensure_pricing_file, load_config, save_config
 from .db import get_conn, locked_conn
 from .parser import normalize_cwd
@@ -409,6 +409,100 @@ def set_workspace_roots(roots: list[str]) -> dict:
     cfg["workspace_roots"] = cleaned
     save_config(cfg)
     return {"ok": True, "workspace_roots": cleaned}
+
+
+@mcp.tool()
+def get_sessions(range: str = "7d", project: str | None = None, sort: str = "cost",
+                 limit: int = 20, search: str | None = None) -> dict:
+    """Sessions in a range, each with cost, message count, models, tool calls,
+    subagent share and peak context size (input + cache tokens of the largest
+    turn). sort: "cost" (most expensive first) or "start" (newest first).
+    Valid ranges: "today", "7d", "30d", "month", "all". limit: 1-200.
+
+    Use this to find the runaway session behind a spike, then
+    get_session_detail for the turn-by-turn picture.
+    """
+    _ensure_ready()
+    return insights.sessions(range, project=project, q=search, sort=sort,
+                             page=1, page_size=min(200, max(1, limit)))
+
+
+@mcp.tool()
+def get_session_detail(session_id: str) -> dict:
+    """One session turn by turn: context size per message (how much of the
+    conversation was re-sent), cost per turn, cumulative cost, the tools each
+    turn called, and which turns ran inside a subagent. `peak_context` says
+    where the context was largest — usually where a /clear would have paid off.
+    """
+    _ensure_ready()
+    detail = insights.session_detail(session_id)
+    if detail is None:
+        return {"error": f"unknown session: {session_id}",
+                "hint": "use a session_id from get_sessions or query_logs"}
+    # Keep the MCP payload manageable: the timeline can run to thousands of turns.
+    msgs = detail["messages"]
+    if len(msgs) > 300:
+        step = len(msgs) // 300 + 1
+        detail["messages"] = msgs[::step]
+        detail["sampled_every"] = step
+    return detail
+
+
+@mcp.tool()
+def get_tools_breakdown(range: str = "30d", project: str | None = None) -> dict:
+    """Which tools the model spent its turns on (Read, Bash, Edit, Agent, ...).
+
+    A tool's cost is the cost of the assistant messages that called it, split
+    evenly when one message called several tools — the cost of deciding to use
+    the tool and writing its arguments, not the downstream cost of its result.
+    Also returns `text_only` (turns with no tool call) and `subagents` (cost
+    share of subagent transcripts, by agent type).
+    """
+    _ensure_ready()
+    return insights.tools_breakdown(range, project)
+
+
+@mcp.tool()
+def get_heatmap(range: str = "30d", project: str | None = None) -> dict:
+    """7x24 usage matrix in local time (dow 0 = Sunday): tokens, cost and
+    calls per cell, plus per-hour and per-weekday totals and the peak slot."""
+    _ensure_ready()
+    return insights.heatmap(range, project)
+
+
+@mcp.tool()
+def get_alerts(project: str | None = None) -> dict:
+    """Things worth a look right now, most urgent first. Kinds: daily_spike
+    (today vs 30-day median), week_pace (7-day vs previous 7), runaway_session,
+    context_bloat (a session whose context exceeded 150K tokens), cache_efficiency,
+    subagent_share, pricing_stale (rate table unverified for >90 days), retention
+    (months with pruned logs / cleanupPeriodDays too low). Each item carries
+    `level` (info|warn|danger) and `params` with the numbers."""
+    _ensure_ready()
+    return insights.alerts(project)
+
+
+@mcp.tool()
+def get_weekly_report(weeks_ago: int = 0, project: str | None = None,
+                      lang: str = "zh") -> dict:
+    """Monday-to-Sunday digest: totals with week-over-week deltas, cost per
+    day, top projects / models / sessions, tool calls, cache efficiency and
+    subscription savings. Returns the structured report plus `markdown`
+    (lang "zh" or "en") ready to paste into a channel or a note.
+    weeks_ago: 0 = current week, 1 = last week, ..."""
+    _ensure_ready()
+    report = insights.weekly_report(max(0, weeks_ago), project)
+    report["markdown"] = insights.render_weekly_markdown(report, "zh" if lang == "zh" else "en")
+    return report
+
+
+@mcp.tool()
+def get_retention_status() -> dict:
+    """Claude Code's transcript retention (cleanupPeriodDays) versus the last
+    TokenScope sync, plus the pricing table's age. Explains why months can be
+    missing and how to prevent it (scheduled sync, longer retention)."""
+    _ensure_ready()
+    return {**insights.retention_info(), "pricing": insights.pricing_status()}
 
 
 def _health_ok(port: int) -> bool:

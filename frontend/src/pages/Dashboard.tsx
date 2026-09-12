@@ -5,6 +5,7 @@ import { useApi } from "../api/useApi";
 import ModelDonut from "../charts/ModelDonut";
 import ProjectBars from "../charts/ProjectBars";
 import TrendChart from "../charts/TrendChart";
+import AlertStrip from "../components/AlertStrip";
 import ChartCard from "../components/ChartCard";
 import ModelTable from "../components/ModelTable";
 import ProjectShareCard from "../components/ProjectShareCard";
@@ -12,10 +13,12 @@ import SavingsPanel from "../components/SavingsPanel";
 import StatCard from "../components/StatCard";
 import TimeRangeSelector from "../components/TimeRangeSelector";
 import { useI18n } from "../i18n";
-import { formatTokens, formatUSD } from "../lib/format";
+import { useMoney } from "../lib/currency";
+import { formatTokens } from "../lib/format";
 
 export default function Dashboard() {
   const { t } = useI18n();
+  const { money } = useMoney();
   const { project, withScope, ready } = useScope();
   const [granularity, setGranularity] = useState<"day" | "month">("day");
   const [donutRange, setDonutRange] = useState<RangeKey>("month");
@@ -40,24 +43,33 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      <AlertStrip />
+
       {/* F1 概览指标卡片 */}
       <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
         <StatCard label={t("dashboard.todayTokens")} icon="token"
           value={cards.data ? formatTokens(cards.data.today.tokens.total) : "…"}
           note={cards.data ? t("dashboard.requests", { n: cards.data.today.events }) : undefined} />
         <StatCard label={t("dashboard.todayCost")} icon="attach_money"
-          value={cards.data ? formatUSD(cards.data.today.cost.total) : "…"}
+          value={cards.data ? money(cards.data.today.cost.total) : "…"}
           note={costNote} />
         <StatCard label={t("dashboard.monthTokens")} icon="calendar_month"
           value={cards.data ? formatTokens(cards.data.month.tokens.total) : "…"}
-          note={cards.data ? t("dashboard.requests", { n: cards.data.month.events }) : undefined} />
+          note={cards.data
+            ? cards.data.month.efficiency?.cache_hit_rate != null
+              ? `${t("dashboard.requests", { n: cards.data.month.events })} · ${t("dashboard.cacheNote", {
+                  rate: (cards.data.month.efficiency.cache_hit_rate * 100).toFixed(1),
+                  saved: money(cards.data.month.efficiency.cache_saved),
+                })}`
+              : t("dashboard.requests", { n: cards.data.month.events })
+            : undefined} />
         <StatCard label={t("dashboard.monthCost")} icon="payments"
-          value={cards.data ? formatUSD(cards.data.month.cost.total) : "…"}
+          value={cards.data ? money(cards.data.month.cost.total) : "…"}
           note={cards.data?.savings.comparable && !project
             ? t("dashboard.monthCostSaved", {
                 plan: cards.data.savings.plan_label,
-                fee: cards.data.savings.monthly_fee,
-                saved: formatUSD(cards.data.savings.saved),
+                fee: money(cards.data.savings.monthly_fee, 0),
+                saved: money(cards.data.savings.saved),
               })
             : costNote}
           accent={cards.data?.savings.comparable && !project ? "text-success" : undefined} />
@@ -138,7 +150,7 @@ export default function Dashboard() {
                 range: t(`range.${donutRange === "all" ? "allTime" : donutRange}`),
                 models: models.data.totals.model_count,
                 calls: models.data.totals.events.toLocaleString(),
-                cost: formatUSD(models.data.totals.cost),
+                cost: money(models.data.totals.cost),
               })
             : t("dashboard.modelTableFallback")
         }

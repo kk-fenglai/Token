@@ -3,7 +3,8 @@ import type { BillingMonth, MonthlyBilling as Billing } from "../api/types";
 import { useApi } from "../api/useApi";
 import SavingsChart from "../charts/SavingsChart";
 import { useI18n } from "../i18n";
-import { formatTokens, formatUSD } from "../lib/format";
+import { useMoney } from "../lib/currency";
+import { formatTokens } from "../lib/format";
 
 /** 回本参照档位 — 与后端 PLANS 一致,只做展示用。 */
 const BREAKEVEN_PLANS = [
@@ -14,6 +15,7 @@ const BREAKEVEN_PLANS = [
 
 export default function MonthlyBilling() {
   const { t } = useI18n();
+  const { money } = useMoney();
   const billing = useApi<Billing>("/api/billing/monthly");
 
   if (billing.error) {
@@ -48,24 +50,24 @@ export default function MonthlyBilling() {
       <div className="grid gap-4 lg:grid-cols-3">
         <Card
           label={t("billing.planCard")}
-          value={sub.comparable ? `${current.plan_label} · ${formatUSD(current.monthly_fee, 0)}/${t("billing.perMonth")}` : sub.label}
+          value={sub.comparable ? `${current.plan_label} · ${money(current.monthly_fee, 0)}/${t("billing.perMonth")}` : sub.label}
           note={sub.source === "detected" ? t("savings.sourceDetected") : sub.source === "manual" ? t("savings.sourceManual") : t("savings.sourceUnknown")}
         />
         <Card
           label={t("billing.mtdCard")}
-          value={formatUSD(current.api_cost_mtd)}
+          value={money(current.api_cost_mtd)}
           note={current.comparable
             ? current.breakeven_reached
               ? t("billing.mtdBreakeven", { x: current.multiple ?? 0 })
-              : t("savings.breakevenRemaining", { amount: formatUSD(current.remaining_to_breakeven) })
+              : t("savings.breakevenRemaining", { amount: money(current.remaining_to_breakeven) })
             : t("billing.notComparable")}
           accent={current.comparable && current.breakeven_reached ? "text-success" : undefined}
         />
         <Card
           label={t("savings.cumulativeLabel", { months: timeline.paid_months })}
-          value={formatUSD(timeline.total_saved)}
+          value={money(timeline.total_saved)}
           note={t("savings.cumulativeNote", {
-            api: formatUSD(timeline.total_api_cost), fees: formatUSD(timeline.total_fees),
+            api: money(timeline.total_api_cost), fees: money(timeline.total_fees),
           })}
           accent={timeline.total_saved >= 0 ? "text-success" : "text-error"}
         />
@@ -85,18 +87,18 @@ export default function MonthlyBilling() {
                     <span className="rounded-full bg-primary-container px-2 py-0.5 text-[11px] font-semibold text-on-primary">{t("billing.yourPlan")}</span>
                   )}
                 </div>
-                <div className="mt-1 text-xl font-bold">{formatUSD(p.fee, 0)}<span className="text-xs font-normal text-on-surface-variant">/{t("billing.perMonth")}</span></div>
+                <div className="mt-1 text-xl font-bold">{money(p.fee, 0)}<span className="text-xs font-normal text-on-surface-variant">/{t("billing.perMonth")}</span></div>
                 <div className="mt-0.5 text-xs text-outline">
                   {usdPerMTok
                     ? t("billing.breakevenTokens", { tokens: formatTokens((p.fee / usdPerMTok) * 1e6) })
-                    : t("billing.breakevenCost", { fee: formatUSD(p.fee, 0) })}
+                    : t("billing.breakevenCost", { fee: money(p.fee, 0) })}
                 </div>
               </div>
             ))}
           </div>
           {usdPerMTok && (
             <p className="mt-3 text-xs text-outline">
-              {t("billing.mixNote", { rate: formatUSD(usdPerMTok, 2), month: ref?.month ?? "" })}
+              {t("billing.mixNote", { rate: money(usdPerMTok, 2), month: ref?.month ?? "" })}
             </p>
           )}
         </div>
@@ -106,7 +108,7 @@ export default function MonthlyBilling() {
       <div className="rounded border border-border-card bg-surface-card p-5 shadow-card">
         <h4 className="mb-3 text-base font-semibold">{t("billing.chartTitle")}</h4>
         <SavingsChart points={timeline.points} />
-        <p className="mt-3 text-xs text-outline">{t("savings.chartNote", { fee: timeline.monthly_fee })}</p>
+        <p className="mt-3 text-xs text-outline">{t("savings.chartNote", { fee: money(timeline.monthly_fee, 0) })}</p>
       </div>
 
       {/* 账单表:一行一个月 */}
@@ -133,9 +135,9 @@ export default function MonthlyBilling() {
                 <td className="px-4 py-3">{t("billing.totalRow", { months: timeline.paid_months })}</td>
                 <td className="px-4 py-3 text-right font-mono">{formatTokens(timeline.total_tokens)}</td>
                 <td className="px-4 py-3 text-right font-mono">{timeline.total_events.toLocaleString()}</td>
-                <td className="px-4 py-3 text-right font-mono">{formatUSD(timeline.total_api_cost)}</td>
-                <td className="px-4 py-3 text-right font-mono">{formatUSD(timeline.total_fees)}</td>
-                <td className={`px-4 py-3 text-right font-mono ${timeline.total_saved >= 0 ? "text-success" : "text-error"}`}>{formatUSD(timeline.total_saved)}</td>
+                <td className="px-4 py-3 text-right font-mono">{money(timeline.total_api_cost)}</td>
+                <td className="px-4 py-3 text-right font-mono">{money(timeline.total_fees)}</td>
+                <td className={`px-4 py-3 text-right font-mono ${timeline.total_saved >= 0 ? "text-success" : "text-error"}`}>{money(timeline.total_saved)}</td>
                 <td className="px-4 py-3" colSpan={2} />
               </tr>
             </tfoot>
@@ -143,7 +145,7 @@ export default function MonthlyBilling() {
         </table>
       </div>
       {timeline.months_missing_data > 0 && (
-        <p className="text-xs text-outline">{t("savings.missingNote", { n: timeline.months_missing_data })}</p>
+        <p className="text-xs text-outline">{t("savings.missingNote", { n: timeline.months_missing_data, zero: money(0, 0) })}</p>
       )}
     </div>
   );
@@ -151,17 +153,18 @@ export default function MonthlyBilling() {
 
 function Row({ p }: { p: BillingMonth }) {
   const { t } = useI18n();
+  const { money } = useMoney();
   return (
     <tr className="border-b border-border-card last:border-0 hover:bg-surface">
       <td className="px-4 py-3 font-mono font-medium">{p.month}</td>
       <td className="px-4 py-3 text-right font-mono">{p.tokens > 0 ? formatTokens(p.tokens) : "—"}</td>
       <td className="px-4 py-3 text-right font-mono">{p.events > 0 ? p.events.toLocaleString() : "—"}</td>
-      <td className="px-4 py-3 text-right font-mono">{formatUSD(p.api_cost)}</td>
-      <td className="px-4 py-3 text-right font-mono">{p.subscribed ? formatUSD(p.fee) : "—"}</td>
+      <td className="px-4 py-3 text-right font-mono">{money(p.api_cost)}</td>
+      <td className="px-4 py-3 text-right font-mono">{p.subscribed ? money(p.fee) : "—"}</td>
       <td className={`px-4 py-3 text-right font-mono ${!p.subscribed ? "" : p.saved >= 0 ? "text-success" : "text-error"}`}>
-        {p.subscribed ? formatUSD(p.saved) : "—"}
+        {p.subscribed ? money(p.saved) : "—"}
       </td>
-      <td className="px-4 py-3 text-right font-mono">{p.subscribed ? formatUSD(p.cumulative_saved) : "—"}</td>
+      <td className="px-4 py-3 text-right font-mono">{p.subscribed ? money(p.cumulative_saved) : "—"}</td>
       <td className="px-4 py-3">
         {p.partial ? <Tag tone="info">{t("savings.tagPartial")}</Tag>
           : p.data_missing && p.subscribed ? <Tag tone="warn">{t("billing.tagMissing")}</Tag>

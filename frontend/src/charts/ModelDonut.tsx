@@ -1,10 +1,12 @@
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import type { ModelItem } from "../api/types";
 import { useI18n } from "../i18n";
-import { FAMILY_COLORS, formatTokens, formatUSD } from "../lib/format";
+import { useMoney } from "../lib/currency";
+import { FAMILY_COLORS, formatTokens } from "../lib/format";
 
 export default function ModelDonut({ items, mode }: { items: ModelItem[]; mode: "tokens" | "cost" }) {
   const { t } = useI18n();
+  const { money } = useMoney();
   const data = items
     .filter((x) => (mode === "tokens" ? x.tokens > 0 : x.cost > 0))
     .map((x) => ({
@@ -26,7 +28,7 @@ export default function ModelDonut({ items, mode }: { items: ModelItem[]; mode: 
           <Tooltip
             contentStyle={{ background: "#1a1c1e", border: "none", borderRadius: 8, color: "#fff", fontSize: 12 }}
             formatter={(value: number, name: string) => [
-              mode === "tokens" ? formatTokens(value) : formatUSD(value),
+              mode === "tokens" ? formatTokens(value) : money(value),
               name,
             ]}
           />
@@ -38,7 +40,7 @@ export default function ModelDonut({ items, mode }: { items: ModelItem[]; mode: 
             <span className="h-2.5 w-2.5 rounded-full" style={{ background: FAMILY_COLORS[d.family] ?? "#E8833A" }} />
             <span className="font-medium">{d.name}</span>
             <span className="ml-auto text-on-surface-variant">
-              {mode === "tokens" ? formatTokens(d.value) : formatUSD(d.value)}
+              {mode === "tokens" ? formatTokens(d.value) : money(d.value)}
             </span>
             <span className="w-12 text-right font-mono text-xs text-outline">
               {(d.share * 100).toFixed(1)}%

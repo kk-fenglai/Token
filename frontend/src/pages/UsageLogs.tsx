@@ -4,6 +4,7 @@ import type { LogsResponse, ModelsResponse } from "../api/types";
 import { useScope } from "../api/scope";
 import { useApi } from "../api/useApi";
 import { useI18n } from "../i18n";
+import { useMoney } from "../lib/currency";
 import { FAMILY_KEYS, formatLocalTime, formatTokens, modelLabel } from "../lib/format";
 
 const PAGE_SIZE = 50;
@@ -21,6 +22,7 @@ const DATE_PRESETS = [
 
 export default function UsageLogs() {
   const { t } = useI18n();
+  const { precise } = useMoney();
   const { project } = useScope();
   const [sp] = useSearchParams();
   const [q, setQ] = useState("");
@@ -173,7 +175,7 @@ export default function UsageLogs() {
                         <span className="text-chart-cache-write">{formatTokens(it.cache_write)}</span> /{" "}
                         <span className="text-primary-container">{formatTokens(it.cache_read)}</span>
                       </td>
-                      <td className="px-4 py-2.5 text-right font-mono text-xs">${it.cost.toFixed(4)}</td>
+                      <td className="px-4 py-2.5 text-right font-mono text-xs">{precise(it.cost)}</td>
                     </tr>
                   ))
                 )}

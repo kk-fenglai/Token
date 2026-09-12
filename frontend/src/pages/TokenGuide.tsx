@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import type { ModelsResponse, RateSet } from "../api/types";
+import type { ModelsResponse, RateSet, PricingStatus } from "../api/types";
 import { useApi } from "../api/useApi";
 import ChartCard from "../components/ChartCard";
 import { Rich, useI18n } from "../i18n";
-import { formatTokens, formatUSD, modelLabel } from "../lib/format";
+import { useMoney } from "../lib/currency";
+import { formatTokens, modelLabel } from "../lib/format";
 
 type Kind = "input" | "output" | "cache_write" | "cache_read";
 
@@ -31,6 +32,8 @@ function estimateTokens(text: string): { low: number; high: number; cjk: number;
 
 export default function TokenGuide() {
   const { t, locale } = useI18n();
+  const pricingStatus = useApi<PricingStatus>("/api/pricing/status");
+  const { money, unit, code, symbol } = useMoney();
   const models = useApi<ModelsResponse>("/api/models?range=all");
   const [sample, setSample] = useState(() => t("guide.s1.sample"));
   const [touched, setTouched] = useState(false);
@@ -177,7 +180,7 @@ export default function TokenGuide() {
                 <Bar share={tShare} color={k.color}
                   left={formatTokens(split.tokens[k.key])} right={`${(tShare * 100).toFixed(2)}%`} />
                 <Bar share={cShare} color={k.color}
-                  left={formatUSD(split.cost[k.key])} right={`${(cShare * 100).toFixed(2)}%`} />
+                  left={money(split.cost[k.key])} right={`${(cShare * 100).toFixed(2)}%`} />
               </div>
             );
           })}
@@ -202,11 +205,17 @@ export default function TokenGuide() {
       {/* 4. 计费方式 */}
       <ChartCard
         title={t("guide.s4.title")}
-        subtitle={t("guide.s4.subtitle")}
+        subtitle={t("guide.s4.subtitle", { code, sym: symbol })}
         loading={models.loading}
         empty={!families.length}
       >
         <div className="space-y-4">
+          {pricingStatus.data && (
+            <p className={`rounded px-3 py-2 text-xs ${pricingStatus.data.stale ? "bg-error-container text-on-error-container" : "bg-surface text-on-surface-variant"}`}>
+              {t(pricingStatus.data.stale ? "guide.s4.staleBanner" : "guide.s4.freshNote",
+                { date: pricingStatus.data.last_verified ?? "?", days: pricingStatus.data.age_days ?? 0 })}
+            </p>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full min-w-[560px] text-sm">
               <thead>
@@ -223,7 +232,7 @@ export default function TokenGuide() {
                     <td className="py-2.5 pr-3 font-medium">{t(`family.${fam}`)}</td>
                     {KINDS.map((k) => (
                       <td key={k.key} className="px-3 py-2.5 text-right font-mono text-xs">
-                        ${rates[k.key]}
+                        {unit(rates[k.key])}
                         <div className="text-[11px] text-outline">
                           {rates.input ? `${(rates[k.key] / rates.input).toFixed(2)}×` : "—"}
                         </div>

@@ -1,7 +1,8 @@
 import { Link } from "react-router-dom";
 import type { ModelUsage } from "../api/types";
 import { useI18n } from "../i18n";
-import { formatRate, formatTokens, formatUSD, modelColorMap, modelLabel } from "../lib/format";
+import { useMoney } from "../lib/currency";
+import { formatTokens, modelColorMap, modelLabel } from "../lib/format";
 
 interface Props {
   items: ModelUsage[];
@@ -13,6 +14,7 @@ interface Props {
 
 export default function ModelTable({ items, linkToLogs = true, compact = false }: Props) {
   const { t } = useI18n();
+  const { money, unit, precise, symbol } = useMoney();
   const colors = modelColorMap(items);
   const totalCost = items.reduce((s, x) => s + x.cost, 0);
   const totalCalls = items.reduce((s, x) => s + x.events, 0);
@@ -33,7 +35,7 @@ export default function ModelTable({ items, linkToLogs = true, compact = false }
             {!compact && (
               <th className="px-3 py-2 text-right">
                 {t("modelTable.unitPrice")}
-                <div className="font-normal normal-case text-outline">{t("modelTable.unitPriceSub")}</div>
+                <div className="font-normal normal-case text-outline">{t("modelTable.unitPriceSub", { sym: symbol })}</div>
               </th>
             )}
             <th className="px-3 py-2 text-right">{t("modelTable.avgPerCall")}</th>
@@ -79,12 +81,12 @@ export default function ModelTable({ items, linkToLogs = true, compact = false }
                 </td>
                 {!compact && (
                   <td className="px-3 py-2.5 text-right font-mono text-xs text-on-surface-variant">
-                    {formatRate(m.rates.input)} / {formatRate(m.rates.output)} / {formatRate(m.rates.cache_write)} /{" "}
-                    {formatRate(m.rates.cache_read)}
+                    {unit(m.rates.input)} / {unit(m.rates.output)} / {unit(m.rates.cache_write)} /{" "}
+                    {unit(m.rates.cache_read)}
                   </td>
                 )}
-                <td className="px-3 py-2.5 text-right font-mono text-xs">${m.avg_cost_per_call.toFixed(4)}</td>
-                <td className="px-3 py-2.5 text-right font-mono text-xs font-semibold">{formatUSD(m.cost)}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs">{precise(m.avg_cost_per_call)}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs font-semibold">{money(m.cost)}</td>
                 <td className="py-2.5 pl-3 text-right">
                   <div className="flex items-center justify-end gap-2">
                     <span className="hidden h-1.5 w-16 overflow-hidden rounded-full bg-surface sm:block">
@@ -109,7 +111,7 @@ export default function ModelTable({ items, linkToLogs = true, compact = false }
             <td className="px-3 py-2.5 text-right font-mono">{formatTokens(totalTokens)}</td>
             {!compact && <td />}
             <td />
-            <td className="px-3 py-2.5 text-right font-mono">{formatUSD(totalCost)}</td>
+            <td className="px-3 py-2.5 text-right font-mono">{money(totalCost)}</td>
             <td className="py-2.5 pl-3 text-right font-mono text-on-surface-variant">100%</td>
           </tr>
         </tfoot>

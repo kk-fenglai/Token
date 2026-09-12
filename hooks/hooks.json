@@ -1,0 +1,17 @@
+{
+  "description": "Capture new Claude Code transcripts into TokenScope at the start of every session, so usage history survives Claude Code's ~30-day transcript cleanup even when the dashboard is never opened.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uvx --from git+https://github.com/kk-fenglai/Token@v1.2.0 tokenscope-sync --quiet",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
+}

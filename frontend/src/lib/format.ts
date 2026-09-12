@@ -5,13 +5,6 @@ export function formatTokens(n: number): string {
   return String(n);
 }
 
-export function formatUSD(n: number, decimals = 2): string {
-  return `$${n.toLocaleString("en-US", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  })}`;
-}
-
 /** UTC ISO ("...Z") → local "YYYY-MM-DD HH:mm:ss". */
 export function formatLocalTime(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -81,11 +74,6 @@ export function modelColorMap<T extends { model: string; family: string }>(items
   return out;
 }
 
-/** Rate table is $/Mtok; a single call's cost needs more precision than $0.00. */
-export function formatRate(n: number): string {
-  return `$${n % 1 === 0 ? n.toFixed(0) : n.toFixed(2)}`;
-}
-
 export const SERIES_COLORS = {
   input: "#0F6EAD",
   output: "#E8833A",
@@ -99,3 +87,12 @@ export const SERIES_LABELS: Record<string, string> = {
   cache_write: "Cache Write",
   cache_read: "Cache Read",
 };
+
+/** 5400 → "1h 30m"; 45 → "45s". */
+export function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${Math.max(0, Math.round(seconds))}s`;
+  const m = Math.round(seconds / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${String(m % 60).padStart(2, "0")}m`;
+}

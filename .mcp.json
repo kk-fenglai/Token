@@ -2,7 +2,7 @@
   "mcpServers": {
     "tokenscope": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/kk-fenglai/Token@v1.1.0", "tokenscope-mcp"],
+      "args": ["--from", "git+https://github.com/kk-fenglai/Token@v1.2.0", "tokenscope-mcp"],
       "env": { "PYTHONUTF8": "1" }
     }
   }

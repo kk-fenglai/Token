@@ -24,6 +24,7 @@ Three ways to use it, installable together or separately:
 - [Install](#install)
 - [What "virtual cost" means](#what-virtual-cost-means)
 - [The dashboard](#the-dashboard)
+- [Sessions, alerts and the weekly report](#sessions-alerts-and-the-weekly-report)
 - [MCP tools](#mcp-tools)
 - [The `/tokenscope` skill](#the-tokenscope-skill)
 - [Model granularity and pricing](#model-granularity-and-pricing)
@@ -168,12 +169,17 @@ The UI never mixes the two framings.
 
 ## The dashboard
 
-`localhost:8787`, four pages.
+`localhost:8787`, seven pages. Costs can be shown in USD, GBP, EUR or CNY
+(top-right switcher; the rate is editable and kept in the browser).
 
 ### Dashboard
 
+- **Alerts strip** — only when something is worth a look: a daily spike, a
+  runaway session, a session whose context passed 150K tokens, a low cache hit
+  rate, a stale rate table, pruned months. See
+  [below](#sessions-alerts-and-the-weekly-report).
 - **Four summary cards** — tokens and virtual cost, today and this month, with
-  request counts.
+  request counts and this month's cache hit rate.
 - **Subscription savings panel** — see [below](#subscription-savings).
 - **Usage trend** — 30 days daily or 12 months monthly. Stacked bars for the
   four token types, virtual cost as a line on the right axis. Click the legend
@@ -200,6 +206,34 @@ figures shown regardless of the selected range** — so a 30-day view still tell
 you what is burning right now. The header summarises the range total plus
 today's total and how many projects are active today.
 
+### Sessions
+
+One row per session: project, start, duration, messages, models, tool calls,
+**peak context** (the largest prompt any turn sent — input + cache write +
+cache read) and cost, with the subagent share. Sort by time (with day dividers)
+or by cost; search by project or session ID. Click a row for the session detail:
+a **context-growth chart** (context per turn as a line, cost per turn as bars,
+the peak marked — usually where a `/clear` would have paid off), the tools that
+session used, and the turn-by-turn table.
+
+### Insights & Weekly
+
+- **Alerts**, all levels.
+- **Cache efficiency this month** — hit rate, what caching saved at the input
+  rate, cost per 1K output tokens. The same three figures appear on every
+  project card and on the project detail page.
+- **Data retention** — Claude Code's `cleanupPeriodDays`, the last sync, and how
+  to stop losing months (see [Keeping history](#keeping-history)).
+- **Time-of-day heatmap** — 7×24, local time, last 30 days.
+- **Cost by tool** — Read / Bash / Edit / Agent…: calls, output tokens, cost.
+  A tool's cost is the cost of the message that *called* it (split evenly when
+  one message called several) — the cost of deciding to use it and writing its
+  arguments, not of reading its result later. Plus the subagent share by agent
+  type.
+- **Weekly report** — Monday to Sunday against the previous week: cost per day,
+  top projects / models / sessions, tools, cache efficiency, subscription
+  savings. Copy as Markdown or download the `.md`.
+
 ### Tokens & Pricing
 
 A built-in explainer covering what a token is, how the four token types arise in
@@ -209,6 +243,9 @@ machine, cache reads are the overwhelming majority of tokens but a minority of
 cost, while output tokens are a rounding error by volume and a large share of
 spend. Judging usage by token count alone is badly misleading.
 
+Section four shows when the rate table was last verified and turns red once
+that is more than 90 days ago.
+
 The UI is available in **Chinese, English and French**. It picks your browser
 language on first open; the switcher is in the top right and the choice is
 remembered in `localStorage`.
@@ -217,7 +254,7 @@ remembered in `localStorage`.
 
 ## MCP tools
 
-18 tools. Read tools marked ⓟ accept a `project=` argument to narrow the answer
+25 tools. Read tools marked ⓟ accept a `project=` argument to narrow the answer
 to one project (pass a project path or any session directory under it).
 
 | Tool | What it returns |
@@ -240,6 +277,13 @@ to one project (pass a project path or any session directory under it).
 | `set_project_alias` | Merge a renamed or moved folder into its new identity |
 | `set_workspace_roots` | Replace the list of directories whose children are projects |
 | `launch_dashboard` | Start the web UI and return its URL; optionally scoped to a project |
+| `get_sessions` ⓟ | Sessions in a range with cost, messages, tool calls, subagent share and peak context |
+| `get_session_detail` | One session turn by turn: context size, cost, tools, subagent turns, the peak |
+| `get_tools_breakdown` ⓟ | Cost by tool, text-only turns, subagent share by agent type |
+| `get_heatmap` ⓟ | 7×24 local-time matrix of tokens, cost and calls |
+| `get_alerts` ⓟ | What is worth a look right now: spikes, runaway sessions, context bloat, cache, pricing, retention |
+| `get_weekly_report` ⓟ | Monday–Sunday digest with week-over-week deltas, as JSON plus ready-to-paste Markdown |
+| `get_retention_status` | `cleanupPeriodDays`, last sync, and the rate table's age |
 
 > **`update_pricing` is a full replace, not a merge.** Always call `get_pricing`
 > first and carry the existing `models` section through unchanged unless you
@@ -414,6 +458,39 @@ If your code lives somewhere unusual — `D:\work`, say — adding it to
 
 ---
 
+## Sessions, alerts and the weekly report
+
+Since 1.2 the parser also keeps, per assistant message, the tool calls it made
+(`tool_names`) and whether it ran inside a subagent (`is_sidechain`,
+`agent_name`). Subagent transcripts (`<session>/subagents/agent-*.jsonl`) carry
+the parent session's ID, so their cost rolls up into the parent session.
+
+**Context size** of a turn is `input + cache_write + cache_read` — the prompt
+that was actually sent. It grows with the conversation until `/clear`. The
+session detail page plots it per turn; `context_bloat` alerts fire when a
+session in the last 24 hours passed 150K tokens.
+
+**Alert kinds and thresholds** (fixed, in `insights.py`): `daily_spike` (today ≥
+2× the 30-day daily median; 4× is critical), `week_pace` (7-day cost moved ≥ 30%
+against the previous 7), `runaway_session` (one session ≥ 40% of a ≥ $5 day),
+`context_bloat`, `cache_efficiency` (month hit rate < 70%), `subagent_share`
+(≥ 30%), `pricing_stale` (> 90 days since `last_verified`), `retention`
+(pruned months, or `cleanupPeriodDays` ≤ 30).
+
+### Keeping history
+
+Claude Code deletes transcripts after `cleanupPeriodDays` (30 by default). Once
+a month is gone it cannot be recovered — TokenScope's database is the only copy,
+and it only has what a sync captured. Two things prevent gaps:
+
+1. Raise retention in `~/.claude/settings.json`: `{ "cleanupPeriodDays": 365 }`.
+2. Sync without opening the dashboard. `tokenscope-sync` is a headless
+   incremental sync; the plugin runs it from a `SessionStart` hook, and
+   `scripts/install-autosync.ps1` (Windows scheduled task, daily + at logon) or
+   `scripts/install-autosync.sh` (cron) run it on a schedule.
+
+---
+
 ## Data, config and privacy
 
 ### What TokenScope reads
@@ -422,6 +499,7 @@ If your code lives somewhere unusual — `D:\work`, say — adding it to
 |---|---|
 | `~/.claude/projects/**/*.jsonl` | The usage data itself: assistant messages with a `usage` block |
 | `~/.claude.json` → `oauthAccount` | Plan detection only (org type, rate-limit tier, subscription start) |
+| `~/.claude/settings.json` → `cleanupPeriodDays` | Retention hint only |
 
 It does **not** read `~/.claude/.credentials.json`, and it makes no network
 requests. There is no telemetry.
@@ -463,8 +541,10 @@ the same files, or having two scan roots that overlap, is therefore safe.
   attribution, not real-time quota.
 - Only Claude Code usage is covered. Chats on claude.ai or the mobile apps leave
   no local transcript and cannot be counted.
-- History is bounded by what Claude Code kept. Raising `cleanupPeriodDays` in
-  your Claude Code settings prevents gaps if you go a while without opening it.
+- History is bounded by what Claude Code kept. Raising `cleanupPeriodDays` and
+  enabling auto-sync (see [Keeping history](#keeping-history)) prevents gaps.
+- Tool-call and subagent columns exist only for transcripts that were still on
+  disk when 1.2 first synced; older rows show no tools.
 - Rates go stale when Anthropic changes prices. `pricing.json` carries a
   `last_verified` date and is editable; edits apply retroactively.
 

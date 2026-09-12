@@ -4,10 +4,12 @@ import { useApi } from "../api/useApi";
 import ModelTable from "../components/ModelTable";
 import StatCard from "../components/StatCard";
 import { useI18n } from "../i18n";
-import { formatLocalTime, formatTokens, formatUSD } from "../lib/format";
+import { useMoney } from "../lib/currency";
+import { formatLocalTime, formatTokens } from "../lib/format";
 
 export default function ProjectDetail() {
   const { t } = useI18n();
+  const { money, precise } = useMoney();
   const [sp] = useSearchParams();
   const path = sp.get("path") ?? "";
   const detail = useApi<Detail>(path ? `/api/projects/detail?path=${encodeURIComponent(path)}` : null);
@@ -45,7 +47,7 @@ export default function ProjectDetail() {
               </span>
               {d.today.tokens > 0 && (
                 <span className="rounded-full bg-success-container px-2.5 py-0.5 text-xs font-medium text-on-success-container">
-                  {t("projects.today")} {formatTokens(d.today.tokens)} · {formatUSD(d.today.cost)}
+                  {t("projects.today")} {formatTokens(d.today.tokens)} · {money(d.today.cost)}
                 </span>
               )}
             </div>
@@ -63,10 +65,10 @@ export default function ProjectDetail() {
                 : t("detail.thisMonth", { tokens: formatTokens(d.month_tokens) })}
               accent={d.tokens_delta_pct != null && d.tokens_delta_pct > 0 ? "text-secondary" : "text-on-surface-variant"} />
             <StatCard label={t("detail.costAll")} icon="attach_money"
-              value={formatUSD(d.cost)}
+              value={money(d.cost)}
               note={t("detail.costAllNote")} />
             <StatCard label={t("detail.avgRequest")} icon="request_quote"
-              value={`$${d.avg_cost_per_event.toFixed(4)}`}
+              value={precise(d.avg_cost_per_event)}
               note={t("detail.sessionCount", { n: d.sessions })} />
             <StatCard label={t("detail.associatedLogs")} icon="receipt_long"
               value={d.events.toLocaleString()}
@@ -96,6 +98,27 @@ export default function ProjectDetail() {
           </div>
 
           <div className="rounded border border-border-card bg-surface-card p-5 shadow-card">
+            <h4 className="text-base font-semibold">{t("detail.efficiencyTitle")}</h4>
+            <p className="mb-3 mt-0.5 text-sm text-on-surface-variant">{t("detail.efficiencySub")}</p>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <div className="text-xs text-on-surface-variant">{t("detail.hitRateLabel")}</div>
+                <div className={`mt-1 text-xl font-bold ${d.efficiency.cache_hit_rate != null && d.efficiency.cache_hit_rate < 0.7 ? "text-secondary" : "text-success"}`}>
+                  {d.efficiency.cache_hit_rate != null ? `${(d.efficiency.cache_hit_rate * 100).toFixed(1)}%` : "—"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-on-surface-variant">{t("detail.cacheSavedLabel")}</div>
+                <div className="mt-1 text-xl font-bold">{money(d.efficiency.cache_saved)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-on-surface-variant">{t("detail.per1kLabel")}</div>
+                <div className="mt-1 text-xl font-bold">{d.efficiency.cost_per_1k_output != null ? money(d.efficiency.cost_per_1k_output) : "—"}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded border border-border-card bg-surface-card p-5 shadow-card">
             <h4 className="text-base font-semibold">{t("detail.modelsUsed")}</h4>
             <p className="mb-3 mt-0.5 text-sm text-on-surface-variant">
               {t("detail.modelsUsedSub")}
@@ -103,13 +126,22 @@ export default function ProjectDetail() {
             <ModelTable items={d.by_model} />
           </div>
 
-          <Link
-            to={`/logs`}
-            className="inline-flex items-center gap-2 text-sm font-medium text-primary-container hover:underline"
-          >
-            <span className="material-symbols-outlined">receipt_long</span>
-            {t("detail.viewInLogs")}
-          </Link>
+          <div className="flex flex-wrap gap-6">
+            <Link
+              to={`/logs`}
+              className="inline-flex items-center gap-2 text-sm font-medium text-primary-container hover:underline"
+            >
+              <span className="material-symbols-outlined">receipt_long</span>
+              {t("detail.viewInLogs")}
+            </Link>
+            <Link
+              to={`/sessions`}
+              className="inline-flex items-center gap-2 text-sm font-medium text-primary-container hover:underline"
+            >
+              <span className="material-symbols-outlined">forum</span>
+              {t("detail.viewSessions")}
+            </Link>
+          </div>
         </>
       )}
     </div>

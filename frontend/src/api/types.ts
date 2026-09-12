@@ -29,11 +29,21 @@ export interface ModelUsage {
   avg_cost_per_call: number;
 }
 
+/** Cache hit rate over prompt tokens, what caching saved at the input rate,
+ *  and cost per 1K output tokens — the F8 figures. */
+export interface Efficiency {
+  cache_hit_rate: number | null;
+  cache_saved: number;
+  cost_per_1k_output: number | null;
+  prompt_tokens: number;
+}
+
 export interface SummaryBlock {
   tokens: TokenBreakdown;
   cost: { total: number; by_family: Record<string, number> };
   events: number;
   by_model: ModelUsage[];
+  efficiency: Efficiency;
 }
 
 export interface SubscriptionInfo {
@@ -195,6 +205,7 @@ export interface ProjectItem extends ProjectTopItem {
   spark: SparkPoint[];
   /** Always today, regardless of the selected range. */
   today: { tokens: number; cost: number; events: number };
+  efficiency: Efficiency;
 }
 
 export interface ProjectDetail extends Omit<ProjectItem, "spark"> {
@@ -237,3 +248,142 @@ export interface SyncStatus {
 }
 
 export type RangeKey = "today" | "7d" | "30d" | "month" | "all";
+
+// ---- v1.2: sessions, tools, heatmap, alerts, weekly report ----
+
+export interface SessionItem {
+  session_id: string;
+  project_path: string;
+  /** Folded project key (links to /projects/detail). */
+  project: string;
+  name: string;
+  first_ts: string;
+  last_ts: string;
+  /** Local date of first_ts, YYYY-MM-DD. */
+  day: string;
+  duration_s: number;
+  messages: number;
+  tokens: Omit<TokenBreakdown, "total">;
+  tokens_total: number;
+  cost: number;
+  models: string[];
+  tool_calls: number;
+  subagent_events: number;
+  subagent_cost: number;
+  /** Largest prompt (input + cache write + cache read) of any turn. */
+  ctx_max: number;
+}
+
+export interface SessionsResponse {
+  total: number;
+  page: number;
+  page_size: number;
+  items: SessionItem[];
+  totals: { sessions: number; cost: number; messages: number; tokens: number };
+}
+
+export interface SessionMessage {
+  i: number;
+  ts: string;
+  model: string;
+  input: number;
+  output: number;
+  cache_write: number;
+  cache_read: number;
+  context: number;
+  cost: number;
+  cumulative_cost: number;
+  tools: string[];
+  sidechain: boolean;
+  agent: string | null;
+}
+
+export interface ToolItem {
+  name: string;
+  calls: number;
+  messages: number;
+  output_tokens: number;
+  cost: number;
+  cost_share: number;
+}
+
+export interface ToolsBreakdown {
+  range?: string;
+  tools: ToolItem[];
+  text_only: { messages: number; cost: number; output_tokens: number };
+  subagents: {
+    events: number; cost: number; tokens: number; cost_share: number;
+    by_agent: { agent: string; events: number; cost: number }[];
+  };
+  totals: { cost: number; events: number; tool_calls: number };
+}
+
+export interface SessionDetailResponse {
+  session: SessionItem;
+  messages: SessionMessage[];
+  tools: ToolsBreakdown;
+  peak_context: { i: number; context: number; ts: string } | null;
+  truncated: boolean;
+}
+
+export interface HeatCell { dow: number; hour: number; tokens: number; cost: number; events: number }
+
+export interface Heatmap {
+  range: string;
+  cells: HeatCell[];
+  max_tokens: number;
+  max_cost: number;
+  by_hour: number[];
+  by_dow: number[];
+  peak: { dow: number; hour: number; cost: number } | null;
+  total_cost: number;
+}
+
+export interface AlertItem {
+  kind: string;
+  level: "info" | "warn" | "danger";
+  params: Record<string, string | number>;
+}
+
+export interface AlertsResponse {
+  generated_at: string;
+  items: AlertItem[];
+  today_cost: number;
+  scope: ScopeInfo | null;
+}
+
+export interface WeeklyReport {
+  week: { from: string; to: string; weeks_ago: number; is_current: boolean; generated_at: string };
+  scope: ScopeInfo | null;
+  totals: { cost: number; tokens: TokenBreakdown; events: number; sessions: number; efficiency: Efficiency | null };
+  previous: { cost: number; tokens: number; events: number; sessions: number };
+  delta_pct: { cost: number | null; tokens: number | null; events: number | null; sessions: number | null };
+  days: { day: string; cost: number }[];
+  busiest_day: { day: string; cost: number } | null;
+  top_projects: { path: string; name: string; tokens: number; cost: number; events: number }[];
+  top_models: ModelUsage[];
+  top_sessions: SessionItem[];
+  tools: ToolItem[];
+  subagents: ToolsBreakdown["subagents"];
+  peak_slot: { dow: number; hour: number; cost: number } | null;
+  savings: SavingsCurrent | null;
+  markdown: string;
+}
+
+export interface PricingStatus {
+  last_verified: string | null;
+  age_days: number | null;
+  stale: boolean;
+  stale_after_days: number;
+  unit: string | null;
+}
+
+export interface RetentionInfo {
+  cleanup_days: number;
+  configured: boolean;
+  settings_path: string;
+  last_sync_at: string | null;
+  days_since_sync: number | null;
+  recommended_days: number;
+  pricing: PricingStatus;
+}

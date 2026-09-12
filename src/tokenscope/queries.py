@@ -30,6 +30,24 @@ def _row_tokens(row) -> int:
     return (row["i"] or 0) + (row["o"] or 0) + (row["w"] or 0) + (row["r"] or 0)
 
 
+def _cache_saved(row, pricing) -> float:
+    """What the cache_read tokens would have cost at the input rate, minus what
+    they did cost — the F8 "equivalent cost saved by caching" figure."""
+    rates = rates_for_model(row["model"], row["f"], pricing)
+    return (row["r"] or 0) * max(rates["input"] - rates["cache_read"], 0.0) / 1_000_000
+
+
+def efficiency_of(tokens: dict, cost: float, cache_saved: float) -> dict:
+    """Cache hit rate over prompt tokens, cache saving, cost per 1K output."""
+    prompt = tokens["input"] + tokens["cache_write"] + tokens["cache_read"]
+    return {
+        "cache_hit_rate": round(tokens["cache_read"] / prompt, 4) if prompt else None,
+        "cache_saved": round(cache_saved, 4),
+        "cost_per_1k_output": round(cost / (tokens["output"] / 1000), 4) if tokens["output"] else None,
+        "prompt_tokens": prompt,
+    }
+
+
 def _blank_detail() -> dict:
     return {"input": 0, "output": 0, "cache_write": 0, "cache_read": 0}
 
@@ -141,17 +159,21 @@ def _block(rows, pricing) -> dict:
     cost_by_family: dict[str, float] = {}
     by_model: dict[str, dict] = {}
     events = 0
+    cache_saved = 0.0
     for row in rows:
         _add_detail(tokens, row)
         events += row["n"]
         cost_by_family[row["f"]] = cost_by_family.get(row["f"], 0.0) + _row_cost(row, pricing)
+        cache_saved += _cache_saved(row, pricing)
         _model_bucket(by_model, row, pricing)
     tokens["total"] = sum(v for k, v in tokens.items() if k != "total")
+    total_cost = sum(cost_by_family.values())
     return {"tokens": tokens,
-            "cost": {"total": round(sum(cost_by_family.values()), 4),
+            "cost": {"total": round(total_cost, 4),
                      "by_family": {k: round(v, 4) for k, v in cost_by_family.items()}},
             "events": events,
-            "by_model": _finalize_models(by_model, pricing)}
+            "by_model": _finalize_models(by_model, pricing),
+            "efficiency": efficiency_of(tokens, total_cost, cache_saved)}
 
 
 def summary_cards(project: str | None = None) -> dict:
@@ -291,12 +313,13 @@ def _merge_projects(rows, pricing, folder: Folder | None = None, session_rows=No
             "path": key, "name": folder.name(key), "tokens": 0, "cost": 0.0,
             "events": 0, "sessions": 0, "last_active": row["last_ts"], "first_seen": row["first_ts"],
             "tokens_detail": _blank_detail(),
-            "cwds": set(), "_models": {},
+            "cwds": set(), "_models": {}, "_cache_saved": 0.0,
         })
         pr["cwds"].add(row["p"])
         pr["tokens"] += _row_tokens(row)
         _add_detail(pr["tokens_detail"], row)
         pr["cost"] += _row_cost(row, pricing)
+        pr["_cache_saved"] += _cache_saved(row, pricing)
         _model_bucket(pr["_models"], row, pricing)
         pr["events"] += row["n"]
         pr["last_active"] = max(pr["last_active"], row["last_ts"])
@@ -320,6 +343,7 @@ def _merge_projects(rows, pricing, folder: Folder | None = None, session_rows=No
                 parts = pr["path"].rstrip("/").split("/")
                 pr["name"] = "/".join(parts[-2:]) if len(parts) >= 2 else pr["name"]
     for pr in projects.values():
+        pr["efficiency"] = efficiency_of(pr["tokens_detail"], pr["cost"], pr.pop("_cache_saved"))
         pr["cost"] = round(pr["cost"], 4)
         pr["cwds"] = sorted(pr["cwds"])
         pr["by_model"] = _finalize_models(pr.pop("_models"), pricing)

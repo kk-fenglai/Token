@@ -1,13 +1,15 @@
 import type { ProjectShare } from "../api/types";
 import { useScope } from "../api/scope";
 import { useI18n } from "../i18n";
-import { formatTokens, formatUSD } from "../lib/format";
+import { useMoney } from "../lib/currency";
+import { formatTokens } from "../lib/format";
 
 /** Shown in place of SavingsPanel when the dashboard is scoped to a project.
  *  A subscription fee buys the whole account, so "this project saved you $X"
  *  would be nonsense — the honest question is how much of the fee it used up. */
 export default function ProjectShareCard({ data }: { data: ProjectShare }) {
   const { t } = useI18n();
+  const { money } = useMoney();
   const { setProject } = useScope();
   const over = (data.pct_of_fee ?? 0) > 100;
 
@@ -34,7 +36,7 @@ export default function ProjectShareCard({ data }: { data: ProjectShare }) {
             <div className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
               {t("scope.cardTitle")} · {data.scope?.name}
             </div>
-            <div className="mt-1 text-[32px] font-bold leading-10">{formatUSD(data.month_cost)}</div>
+            <div className="mt-1 text-[32px] font-bold leading-10">{money(data.month_cost)}</div>
             <p className="mt-1 text-sm text-on-surface-variant">
               {t("scope.tokensAndCalls", {
                 tokens: formatTokens(data.month_tokens),
@@ -52,7 +54,7 @@ export default function ProjectShareCard({ data }: { data: ProjectShare }) {
         <Metric
           label={t("scope.ofAccount", {
             pct: (data.cost_share * 100).toFixed(1),
-            total: formatUSD(data.account_month_cost),
+            total: money(data.account_month_cost),
           })}
           share={data.cost_share}
           color="#0F6EAD"
@@ -60,7 +62,7 @@ export default function ProjectShareCard({ data }: { data: ProjectShare }) {
         {data.comparable && data.pct_of_fee != null ? (
           <Metric
             label={t(over ? "scope.ofFeeOver" : "scope.ofFee", {
-              plan: data.plan_label, fee: data.monthly_fee, pct: data.pct_of_fee,
+              plan: data.plan_label, fee: money(data.monthly_fee, 0), pct: data.pct_of_fee,
             })}
             share={Math.min(data.pct_of_fee / 100, 1)}
             color={over ? "#1b6d43" : "#974800"}

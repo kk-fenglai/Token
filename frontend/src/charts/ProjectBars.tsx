@@ -2,11 +2,13 @@ import { useNavigate } from "react-router-dom";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { ProjectTopItem } from "../api/types";
 import { useI18n } from "../i18n";
-import { formatTokens, formatUSD } from "../lib/format";
+import { useMoney } from "../lib/currency";
+import { formatTokens } from "../lib/format";
 
 export default function ProjectBars({ items }: { items: ProjectTopItem[] }) {
   const navigate = useNavigate();
   const { t } = useI18n();
+  const { money } = useMoney();
   const data = items.map((x) => ({ ...x }));
   const height = Math.max(220, data.length * 36 + 20);
 
@@ -26,7 +28,7 @@ export default function ProjectBars({ items }: { items: ProjectTopItem[] }) {
           cursor={{ fill: "rgba(15,110,173,0.06)" }}
           contentStyle={{ background: "#1a1c1e", border: "none", borderRadius: 8, color: "#fff", fontSize: 12 }}
           formatter={(value: number, _name, entry) => [
-            `${formatTokens(value)} tokens · ${formatUSD((entry?.payload as ProjectTopItem)?.cost ?? 0)}`,
+            `${formatTokens(value)} tokens · ${money((entry?.payload as ProjectTopItem)?.cost ?? 0)}`,
             t("dashboard.projectsTopTooltip"),
           ]}
         />

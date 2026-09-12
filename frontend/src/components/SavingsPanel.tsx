@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { SavingsReport } from "../api/types";
 import SavingsChart from "../charts/SavingsChart";
 import { Rich, useI18n, type TFunc } from "../i18n";
-import { formatUSD } from "../lib/format";
+import { useMoney } from "../lib/currency";
 
 /** Plan ids the backend catalog can return; only these two are real words. */
 function planLabel(id: string, fallback: string, t: TFunc): string {
@@ -17,6 +17,7 @@ export default function SavingsPanel({ report, onChanged }: {
 }) {
   const { subscription: sub, current, timeline } = report;
   const { t } = useI18n();
+  const { money } = useMoney();
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -75,16 +76,16 @@ export default function SavingsPanel({ report, onChanged }: {
           </span>
           <div>
             <div className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
-              {t("savings.header", { plan: planName, fee: current.monthly_fee })}
+              {t("savings.header", { plan: planName, fee: money(current.monthly_fee, 0) })}
             </div>
             <div className={`mt-1 text-[32px] font-bold leading-10 ${positive ? "text-success" : "text-error"}`}>
               {t(positive ? "savings.saved" : "savings.lost")}
-              {formatUSD(Math.abs(current.saved))}
+              {money(Math.abs(current.saved))}
             </div>
             <p className="mt-1 text-sm text-on-surface-variant">
               {t("savings.line", {
-                api: formatUSD(current.api_cost_mtd),
-                fee: formatUSD(current.monthly_fee),
+                api: money(current.api_cost_mtd),
+                fee: money(current.monthly_fee),
               })}
               {current.multiple != null && (
                 <span className="text-success">
@@ -112,7 +113,7 @@ export default function SavingsPanel({ report, onChanged }: {
           label={t("savings.breakevenLabel")}
           value={current.breakeven_reached
             ? t("savings.breakevenReached")
-            : t("savings.breakevenRemaining", { amount: formatUSD(current.remaining_to_breakeven) })}
+            : t("savings.breakevenRemaining", { amount: money(current.remaining_to_breakeven) })}
           note={t("savings.monthProgress", {
             day: current.month_progress.day, total: current.month_progress.days_in_month,
           })}
@@ -120,14 +121,14 @@ export default function SavingsPanel({ report, onChanged }: {
         />
         <Metric
           label={t("savings.projectedLabel")}
-          value={formatUSD(current.projected_api_cost)}
-          note={t("savings.projectedNote", { amount: formatUSD(current.projected_saved) })}
+          value={money(current.projected_api_cost)}
+          note={t("savings.projectedNote", { amount: money(current.projected_saved) })}
         />
         <Metric
           label={t("savings.cumulativeLabel", { months: timeline.paid_months })}
-          value={formatUSD(timeline.total_saved)}
+          value={money(timeline.total_saved)}
           note={t("savings.cumulativeNote", {
-            api: formatUSD(timeline.total_api_cost), fees: formatUSD(timeline.total_fees),
+            api: money(timeline.total_api_cost), fees: money(timeline.total_fees),
           })}
           accent={timeline.total_saved >= 0 ? "text-success" : "text-error"}
         />
@@ -136,9 +137,9 @@ export default function SavingsPanel({ report, onChanged }: {
       <div className="px-5 pb-5">
         <SavingsChart points={timeline.points} />
         <p className="mt-3 text-xs text-outline">
-          {t("savings.chartNote", { fee: timeline.monthly_fee })}
+          {t("savings.chartNote", { fee: money(timeline.monthly_fee, 0) })}
           {timeline.months_missing_data > 0 && (
-            <Rich text={t("savings.missingNote", { n: timeline.months_missing_data })} />
+            <Rich text={t("savings.missingNote", { n: timeline.months_missing_data, zero: money(0, 0) })} />
           )}
         </p>
       </div>
@@ -162,6 +163,7 @@ function PlanPicker({ sub, saving, apply }: {
   apply: (body: Record<string, unknown>) => void;
 }) {
   const { t } = useI18n();
+  const { money } = useMoney();
   const [fee, setFee] = useState("");
   return (
     <div className="space-y-3 py-4">
@@ -178,7 +180,7 @@ function PlanPicker({ sub, saving, apply }: {
             }`}
           >
             {planLabel(p.id, p.label, t)}
-            {p.monthly_usd > 0 && <span className="ml-1 font-mono text-xs opacity-80">${p.monthly_usd}</span>}
+            {p.monthly_usd > 0 && <span className="ml-1 font-mono text-xs opacity-80">{money(p.monthly_usd, 0)}</span>}
           </button>
         ))}
         <button

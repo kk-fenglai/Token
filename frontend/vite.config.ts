@@ -8,6 +8,16 @@ export default defineConfig({
     // package data (committed to git, included in the wheel).
     outDir: "../src/tokenscope/static",
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        // Long-lived vendor chunks cache across releases; recharts only loads
+        // with the pages that draw charts.
+        manualChunks: {
+          react: ["react", "react-dom", "react-router-dom"],
+          recharts: ["recharts"],
+        },
+      },
+    },
   },
   server: {
     port: 5173,

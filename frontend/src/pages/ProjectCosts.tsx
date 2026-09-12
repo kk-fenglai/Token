@@ -5,10 +5,12 @@ import { useApi } from "../api/useApi";
 import Sparkline from "../charts/Sparkline";
 import TimeRangeSelector from "../components/TimeRangeSelector";
 import { useI18n } from "../i18n";
-import { formatRelative, formatTokens, formatUSD } from "../lib/format";
+import { useMoney } from "../lib/currency";
+import { formatRelative, formatTokens } from "../lib/format";
 
 export default function ProjectCosts() {
   const { t, tag } = useI18n();
+  const { money } = useMoney();
   const rel = { never: t("common.never"), justNow: t("common.justNow") };
   const [range, setRange] = useState<RangeKey>("30d");
   const projects = useApi<{ items: ProjectItem[] }>(`/api/projects?range=${range}`);
@@ -50,7 +52,7 @@ export default function ProjectCosts() {
                   {t("projects.topProject")}
                 </div>
                 <div className="mt-1 text-lg font-semibold">{top.name}</div>
-                <div className="mt-2 text-3xl font-bold">{formatUSD(top.cost)}</div>
+                <div className="mt-2 text-3xl font-bold">{money(top.cost)}</div>
                 <div className="mt-1 flex items-center justify-between text-sm text-on-surface-variant">
                   <span>{formatTokens(top.tokens)} {t("common.tokens")}</span>
                   <Link to={`/projects/detail?path=${encodeURIComponent(top.path)}`} className="font-medium text-primary-container hover:underline">
@@ -64,14 +66,14 @@ export default function ProjectCosts() {
                 {t("projects.totalInRange")}
               </div>
               <div className="mt-1 text-lg font-semibold">{t("projects.activeCount", { n: items.length })}</div>
-              <div className="mt-2 text-3xl font-bold">{formatUSD(totalCost)}</div>
+              <div className="mt-2 text-3xl font-bold">{money(totalCost)}</div>
               <div className="mt-1 text-sm text-on-surface-variant">
                 {formatTokens(items.reduce((s, x) => s + x.tokens, 0))} {t("common.tokens")}
               </div>
               <div className="mt-3 border-t border-border-card pt-2 text-sm">
                 <span className="text-on-surface-variant">{t("projects.todayTotal")}: </span>
                 <span className="font-mono font-semibold">
-                  {formatTokens(todayTokens)} · {formatUSD(todayCost)}
+                  {formatTokens(todayTokens)} · {money(todayCost)}
                 </span>
                 <span className="ml-2 text-xs text-outline">
                   {t("projects.activeToday", { n: activeToday })}
@@ -102,7 +104,19 @@ export default function ProjectCosts() {
                     </div>
                     <div>
                       <div className="text-xs text-on-surface-variant">{t("common.virtualCost")}</div>
-                      <div className="font-semibold">{formatUSD(p.cost)}</div>
+                      <div className="font-semibold">{money(p.cost)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-on-surface-variant">{t("projects.hitRate")}</div>
+                      <div className={`font-mono text-xs font-semibold ${p.efficiency.cache_hit_rate != null && p.efficiency.cache_hit_rate < 0.7 ? "text-secondary" : ""}`}>
+                        {p.efficiency.cache_hit_rate != null ? `${(p.efficiency.cache_hit_rate * 100).toFixed(1)}%` : "—"}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-on-surface-variant">{t("projects.per1k")}</div>
+                      <div className="font-mono text-xs font-semibold">
+                        {p.efficiency.cost_per_1k_output != null ? money(p.efficiency.cost_per_1k_output) : "—"}
+                      </div>
                     </div>
                   </div>
                   {/* 今日始终显示,与所选范围无关 —— 除非范围本身就是今日 */}
@@ -115,7 +129,7 @@ export default function ProjectCosts() {
                       <span className="font-semibold">{t("projects.today")}</span>
                       {p.today.tokens > 0 ? (
                         <span className="font-mono">
-                          {formatTokens(p.today.tokens)} · {formatUSD(p.today.cost)} ·{" "}
+                          {formatTokens(p.today.tokens)} · {money(p.today.cost)} ·{" "}
                           {t("dashboard.requests", { n: p.today.events })}
                         </span>
                       ) : (

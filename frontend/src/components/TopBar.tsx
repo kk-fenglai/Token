@@ -2,6 +2,7 @@ import { useContext, useState } from "react";
 import { SyncContext } from "../api/useApi";
 import { useI18n } from "../i18n";
 import { formatRelative } from "../lib/format";
+import CurrencySwitcher from "./CurrencySwitcher";
 import LocaleSwitcher from "./LocaleSwitcher";
 import ScopeSelector from "./ScopeSelector";
 
@@ -40,6 +41,7 @@ export default function TopBar({ title }: { title: string }) {
           </span>
         )}
         <ScopeSelector />
+        <CurrencySwitcher />
         <LocaleSwitcher />
         <button
           onClick={syncNow}

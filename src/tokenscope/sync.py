@@ -3,6 +3,14 @@
 A file is re-parsed whole whenever (mtime_ns, size) changed; the last-wins
 upsert makes that idempotent. Events are never deleted when a log file
 disappears — the DB is the system of record (Claude Code prunes old logs).
+
+When PARSER_VERSION changes, every file still on disk is re-parsed once so
+columns added by the new parser get filled for history that has not been
+pruned yet.
+
+`tokenscope-sync` (this module's `main`) is the headless entry point used by
+the SessionStart hook and the scheduled task, so transcripts get captured even
+if the dashboard is never opened before Claude Code prunes them.
 """
 from __future__ import annotations
 
@@ -11,8 +19,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .config import load_config
-from .db import locked_conn, set_meta
-from .parser import UPSERT_SQL, parse_file
+from .db import get_meta, locked_conn, set_meta
+from .parser import PARSER_VERSION, UPSERT_SQL, parse_file
 
 
 class SyncService:
@@ -54,8 +62,11 @@ class SyncService:
             files.extend(rp.glob("**/*.jsonl"))
         self.files_seen = len(files)
 
+        # A parser upgrade invalidates every cached (mtime, size) — the files
+        # did not change, but what we extract from them did.
+        reparse_all = get_meta("parser_version") != str(PARSER_VERSION)
         with locked_conn() as conn:
-            known = {
+            known = {} if reparse_all else {
                 r["path"]: (r["mtime_ns"], r["size"])
                 for r in conn.execute("SELECT path, mtime_ns, size FROM sync_files")
             }
@@ -85,6 +96,8 @@ class SyncService:
                 conn.commit()
             parsed += 1
         self.files_parsed = parsed
+        if reparse_all:
+            set_meta("parser_version", str(PARSER_VERSION))
 
     def status(self) -> dict:
         with locked_conn() as conn:
@@ -105,7 +118,36 @@ class SyncService:
 service = SyncService()
 
 
-if __name__ == "__main__":  # manual run: python -m app.sync
-    import json as _json
+def main() -> None:
+    """`tokenscope-sync`: one incremental sync, then exit.
 
-    print(_json.dumps(service.sync_once(), indent=2, ensure_ascii=False))
+    Exit code 0 even when nothing changed; 1 only if the scan itself failed,
+    so a hook or scheduled task can tell "no new logs" from "broken".
+    """
+    import argparse
+    import json as _json
+    import sys
+
+    from .config import ensure_pricing_file
+    from .db import get_conn
+
+    ap = argparse.ArgumentParser(prog="tokenscope-sync",
+                                 description="Parse new Claude Code transcripts into the TokenScope database")
+    ap.add_argument("--quiet", action="store_true", help="print nothing on success")
+    ap.add_argument("--json", action="store_true", help="print the status as JSON")
+    args = ap.parse_args()
+
+    get_conn()
+    ensure_pricing_file()
+    status = service.sync_once()
+    if args.json:
+        print(_json.dumps(status, ensure_ascii=False))
+    elif not args.quiet:
+        print(f"tokenscope: {status['files_parsed']} file(s) parsed, "
+              f"{status['events_total']} events total"
+              + (f", error: {status['last_error']}" if status["last_error"] else ""))
+    sys.exit(1 if status["last_error"] else 0)
+
+
+if __name__ == "__main__":  # manual run: python -m tokenscope.sync
+    main()
