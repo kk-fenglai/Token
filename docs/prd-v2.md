@@ -2,16 +2,18 @@
 
 | 字段 | 内容 |
 |---|---|
-| 文档版本 | v2.0 |
-| 日期 | 2026-09-12 |
+| 文档版本 | v2.1 |
+| 日期 | 2026-09-26 |
 | 作者 | Davin |
-| 状态 | v1.2 已实现(本文档与实现同步写就) |
+| 状态 | v1.3 已实现(本文档与实现同步写就) |
 | 关联文档 | `tokenscope-prd-v1.md`(v1 / v1.1 需求,F1–F16)、`tokenscope/README.md`(用户文档) |
-| 对应版本 | tokenscope 1.2.0 |
+| 对应版本 | tokenscope 1.3.0 |
 
 ---
 
 ## 0. 修订记录
+
+**v2.1(2026-09-26)** — 新增 F26 开发项目追踪与 GitHub 推送提醒,随 1.3.0 交付。起因:同时开发多个本地仓库时经常 commit 之后忘记 push;TokenScope 已经从会话日志知道「最近在哪些目录工作」,顺手把 git 状态也看一眼。
 
 **v2.0(2026-09-12)** — 新增 F17–F25 九个功能点,全部在本次迭代中实现并随 1.2.0 交付。
 
@@ -82,6 +84,7 @@ v1 的查询层把每条 assistant 消息压成四个 token 计数,所有面板�
 | F23 | 周报 | P1 | 已交付 |
 | F24 | 数据留存保障与定价时效 | P0 | 已交付 |
 | F25 | 工程改进:路由级代码拆分、汇率快照标注 | P2 | 已交付 |
+| F26 | 开发项目追踪与 GitHub 推送提醒 | P1 | 已交付(1.3.0) |
 
 ### 4.2 F17 — 多币种显示
 
@@ -178,7 +181,36 @@ v1 的查询层把每条 assistant 消息压成四个 token 计数,所有面板�
 - **汇率快照标注。** 见 F17。
 - **版本。** 1.2.0;`.mcp.json` 与 `hooks.json` 指向 `@v1.2.0` 标签,**发布时必须打该标签**,否则插件安装失败。
 
-### 4.11 横切要求(在 v1 §4.5 基础上)
+### 4.11 F26 — 开发项目追踪与 GitHub 推送提醒
+
+**问题。** 本机同时有六七个仓库在开发,commit 之后忘记 push 是常态;要等到换机器或者丢盘才发现代码只在本地。
+
+**做什么。** 侧栏新增「开发项目」页,列出正在开发的本地 git 仓库和「还有什么没到 GitHub」;warn / danger 级别同时进入 F20 的提醒体系(总览页 AlertStrip、`get_alerts`),并在 Windows 上弹桌面通知。
+
+**哪些仓库算「正在开发」。** 三者取并集,减去 `ignored`:
+1. 近 `active_days`(默认 14)天有 Claude Code 会话的项目目录,按 F13 的折叠规则归并后,再向下找到最近的 `.git`(`Token消耗量/tokenscope/frontend` 里的会话追踪 `tokenscope` 仓库);
+2. `workspace_roots` 直接子目录中含 `.git` 的目录;
+3. 手动 `extra`。`pinned` 置顶。
+
+**检查什么。** 每个仓库一次 `git status --porcelain=v2 --branch -z --untracked-files=normal`,加 `remote get-url`、`log -1 --format=%ct`、仅在领先时 `log --format=%ct @{upstream}..HEAD`(最后一行 = 最早未推送提交)。并行 8 路,60 秒缓存。**全部离线**:不 fetch、不写仓库(`GIT_OPTIONAL_LOCKS=0`)、不弹凭据提示(`GIT_TERMINAL_PROMPT=0`)。
+
+**分级。**
+
+| 情形 | 级别 | reason |
+|---|---|---|
+| 领先上游 N 个提交 | warn | `unpushed` |
+| …且最早未推送提交超过 `unpushed_danger_hours`(24) | danger | `unpushed_stale` |
+| 有未提交改动,最新改动文件 mtime 超过 `dirty_warn_hours`(24) | warn | `dirty_stale` |
+| 有未提交改动但仍在编辑 | ok(显示不提醒) | `dirty_fresh` |
+| 无远程 / 远程非 GitHub / 分支无上游 / 分离 HEAD | info | `no_remote` / `not_github` / `no_upstream` / `detached` |
+
+**提醒。** 提醒种类 `git_unpushed`(warn/danger)、`git_dirty`(warn)、`git_no_remote`(info),params 带 `name / path / ahead / changes / hours`,AlertRow 对 `path` 渲染「查看项目」链接。桌面通知由 web 进程的同步循环触发(`tokenscope-sync` CLI 不触发),把当天尚未提醒过的 warn/danger 项目合并为**一条** toast,成功后在 `meta` 表记 `notify:dev:<path>` = 日期;每项目每天最多一次,失败不消耗当天名额。实现:Windows PowerShell 5.1 的 WinRT `ToastNotificationManager`,文案走环境变量、脚本走 `-EncodedCommand`,不做任何 shell 拼接;失败回退 `NotifyIcon` 气泡;非 Windows 静默返回。
+
+**配置。** `config.json` → `dev_projects: {extra, ignored, pinned, active_days, unpushed_danger_hours, dirty_warn_hours, desktop_notify}`,页面内可改。
+
+**非目标。** 不自动 push、不 fetch、不管理 GitHub 认证。
+
+### 4.12 横切要求(在 v1 §4.5 基础上)
 
 - **提醒文案的换算。** 提醒的 `params` 是裸数字;前端按键名决定格式:`today / median / this / prev / cost` 走货币换算,`ctx_max` 走 token 缩写,`delta_pct` 带符号。新增提醒种类时同步维护这张映射。
 - **三语。** 新增 alerts / sessions / sessionDetail / insights 四个字典区块,中文为准,英法由类型系统校验(缺键即构建失败,同 v1)。
@@ -227,14 +259,20 @@ v1 的查询层把每条 assistant 消息压成四个 token 计数,所有面板�
 | GET | `/api/report/weekly.md?week=&lang=&project=` | F23(下载) |
 | GET | `/api/retention` | F24 |
 | GET | `/api/pricing/status` | F24 |
+| GET | `/api/dev-projects` | F26 快照(60 s 缓存) |
+| POST | `/api/dev-projects/refresh` | F26 强制重查 |
+| GET / PUT | `/api/dev-projects/config` | F26 配置(PUT 为部分更新,422 校验) |
+| POST | `/api/dev-projects/notify-test` | F26 发一条测试 toast |
+| POST | `/api/dev-projects/notify-now` | F26 立即跑一遍提醒(遵守每日去重) |
+| POST | `/api/dev-projects/open` | F26 在资源管理器打开(仅限快照内的路径) |
 
-### 5.4 MCP 工具(新增 7 个,共 25 个)
+### 5.4 MCP 工具(v2.0 新增 7 个;v2.1 新增 `get_dev_projects`,共 26 个)
 
 `get_sessions`、`get_session_detail`(超过 300 轮时等距采样并标注 `sampled_every`)、`get_tools_breakdown`、`get_heatmap`、`get_alerts`、`get_weekly_report`、`get_retention_status`。工具描述里写明成本口径与「不要把子代理/工具成本说成节省」等表述规则,与 v1 skill 的诚实性约束一致。
 
 ### 5.5 前端
 
-新页面:`Sessions`、`SessionDetail`、`Insights`;新组件:`AlertStrip`(含可复用的 `AlertRow`)、`ToolsTable`、`Heatmap`、`ContextChart`;`format.formatDuration`。侧栏新增「会话分析」「洞察与周报」。
+新页面:`Sessions`、`SessionDetail`、`Insights`,v2.1 新增 `DevProjects`;新组件:`AlertStrip`(含可复用的 `AlertRow`)、`ToolsTable`、`Heatmap`、`ContextChart`;`format.formatDuration`。侧栏新增「会话分析」「洞察与周报」。
 
 ---
 
@@ -246,6 +284,8 @@ v1 的查询层把每条 assistant 消息压成四个 token 计数,所有面板�
 | F18–F25 | 已交付(2026-09-12),后端 46 个测试通过,前端类型检查与构建通过 |
 | 打标签 v1.2.0 并推送 | **待做**(插件 / hook 依赖该标签) |
 | README、SKILL.md 更新 | 已更新(与代码一起待提交) |
+| F26 开发项目追踪 | 已交付(2026-09-26),后端 78 个测试通过,前端构建通过 |
+| 打标签 v1.3.0 并推送,`.mcp.json` / `hooks.json` 改为 `@v1.3.0` | **待做** |
 
 ---
 
@@ -264,6 +304,10 @@ v1 的查询层把每条 assistant 消息压成四个 token 计数,所有面板�
 **R8 阈值写死。** 重度用户可能天天触发 daily_spike。先观察一个版本再决定是否开放配置。
 
 **R9 SessionStart 钩子的首次延迟。** `uvx` 首次解析 git 依赖可能超过 10 s;之后有缓存。超时设为 120 s,且钩子失败不影响 Claude Code 使用。
+
+**R10 OneDrive 中的仓库。** 按需文件可能让 `git status` 先下载再比较,15 s 超时兜底并显示为 `git_error`;用户可忽略该仓库。`GIT_OPTIONAL_LOCKS=0` 避免每 5 分钟重写 `.git/index` 触发同步。
+
+**R11 桌面通知依赖 Windows PowerShell 5.1。** pwsh 7 没有 WinRT 投影;专注助手可能静默压制。站内提醒是最终依据。
 
 **Q5 是否联网拉汇率?** 倾向不做:与「数据不出本机」的承诺冲突,且手填一次即可。已在弹层标注快照日期。
 

@@ -102,9 +102,19 @@ billing.
 10. **`why`** (or "why did today cost so much", "anything wrong?") — call
     `get_alerts()`. Render each item on one line with its level. Kinds:
     daily_spike, week_pace, runaway_session, context_bloat, cache_efficiency,
-    subagent_share, pricing_stale, retention. For runaway_session /
-    context_bloat include the project name and offer `get_session_detail`.
+    subagent_share, pricing_stale, retention, git_unpushed, git_dirty,
+    git_no_remote. For runaway_session / context_bloat include the project
+    name and offer `get_session_detail`. For the git_* kinds name the project
+    and say what is missing from GitHub (N commits unpushed for H hours, or
+    uncommitted changes idle for H hours).
     An empty list means "nothing unusual" — say exactly that, do not pad.
+
+13. **`projects`** / **`push`** (or "what haven't I pushed", "which repos
+    have unpushed work") — call `get_dev_projects()`. One line per repo:
+    name, branch, `↑ahead`, uncommitted `changes`, level. Lead with danger,
+    then warn; if everything is `ok`, say so in one sentence. Never run
+    `git push` yourself — give the command `git -C "<path>" push` and let
+    the user run it.
 
 11. **`tools`** — call `get_tools_breakdown(range="30d")`. Table of tools by
     cost with calls and cost_share, then `text_only` and `subagents`. State

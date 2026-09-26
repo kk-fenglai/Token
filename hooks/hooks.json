@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uvx --from git+https://github.com/kk-fenglai/Token@v1.2.0 tokenscope-sync --quiet",
+            "command": "uvx --from git+https://github.com/kk-fenglai/Token@v1.3.0 tokenscope-sync --quiet",
             "timeout": 120
           }
         ]

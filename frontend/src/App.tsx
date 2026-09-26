@@ -16,6 +16,7 @@ const UsageLogs = lazy(() => import("./pages/UsageLogs"));
 const Sessions = lazy(() => import("./pages/Sessions"));
 const SessionDetail = lazy(() => import("./pages/SessionDetail"));
 const Insights = lazy(() => import("./pages/Insights"));
+const DevProjects = lazy(() => import("./pages/DevProjects"));
 
 const TITLE_KEYS: Record<string, string> = {
   "/": "nav.dashboard",
@@ -27,6 +28,7 @@ const TITLE_KEYS: Record<string, string> = {
   "/sessions": "nav.sessions",
   "/sessions/detail": "nav.sessionDetail",
   "/insights": "nav.insights",
+  "/dev-projects": "nav.devProjects",
 };
 
 function Shell() {
@@ -50,6 +52,7 @@ function Shell() {
               <Route path="/projects" element={<ProjectCosts />} />
               <Route path="/projects/detail" element={<ProjectDetail />} />
               <Route path="/guide" element={<TokenGuide />} />
+              <Route path="/dev-projects" element={<DevProjects />} />
             </Routes>
           </Suspense>
         </main>

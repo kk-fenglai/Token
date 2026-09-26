@@ -11,7 +11,7 @@ Three ways to use it, installable together or separately:
 
 - **Claude Code plugin** — MCP tools plus a `/tokenscope` command, so you can ask
   "how many tokens did I burn this month?" in the middle of a session.
-- **MCP server** — 18 tools Claude can call directly, if you want the data
+- **MCP server** — 26 tools Claude can call directly, if you want the data
   without the slash command.
 - **Web dashboard** — FastAPI + React on `localhost:8787`, the full visual
   interface with charts, per-model tables and a subscription break-even panel.
@@ -25,6 +25,7 @@ Three ways to use it, installable together or separately:
 - [What "virtual cost" means](#what-virtual-cost-means)
 - [The dashboard](#the-dashboard)
 - [Sessions, alerts and the weekly report](#sessions-alerts-and-the-weekly-report)
+- [Dev Projects and push reminders](#dev-projects-and-push-reminders)
 - [MCP tools](#mcp-tools)
 - [The `/tokenscope` skill](#the-tokenscope-skill)
 - [Model granularity and pricing](#model-granularity-and-pricing)
@@ -116,7 +117,7 @@ Or just ask in plain language — "which project is burning the most money?",
 ### Option 2 — MCP server only
 
 ```bash
-claude mcp add tokenscope -s user -- uvx --from git+https://github.com/kk-fenglai/Token@v1.1.0 tokenscope-mcp
+claude mcp add tokenscope -s user -- uvx --from git+https://github.com/kk-fenglai/Token@v1.3.0 tokenscope-mcp
 ```
 
 `-s user` is the right scope: TokenScope reports **your** usage across every
@@ -128,7 +129,7 @@ project's combined usage.
 ### Option 3 — dashboard only
 
 ```bash
-uvx --from git+https://github.com/kk-fenglai/Token@v1.1.0 tokenscope-web
+uvx --from git+https://github.com/kk-fenglai/Token@v1.3.0 tokenscope-web
 # then open http://127.0.0.1:8787
 ```
 
@@ -169,7 +170,7 @@ The UI never mixes the two framings.
 
 ## The dashboard
 
-`localhost:8787`, seven pages. Costs can be shown in USD, GBP, EUR or CNY
+`localhost:8787`, eight pages. Costs can be shown in USD, GBP, EUR or CNY
 (top-right switcher; the rate is editable and kept in the browser).
 
 ### Dashboard
@@ -234,6 +235,11 @@ session used, and the turn-by-turn table.
   top projects / models / sessions, tools, cache efficiency, subscription
   savings. Copy as Markdown or download the `.md`.
 
+### Dev Projects
+
+The git repos you are currently working on, with what still needs to reach
+GitHub. See [Dev Projects and push reminders](#dev-projects-and-push-reminders).
+
 ### Tokens & Pricing
 
 A built-in explainer covering what a token is, how the four token types arise in
@@ -252,9 +258,51 @@ remembered in `localStorage`.
 
 ---
 
+## Dev Projects and push reminders
+
+Working across several local repos, it is easy to commit and forget to push.
+The **Dev Projects** page lists every git repo you are developing and what has
+not reached GitHub yet.
+
+**Which repos are tracked.** The union of:
+
+- the project folders of your Claude Code sessions from the last 14 days
+  (`active_days`), resolved to the nearest enclosing git repo — a session in
+  `Token消耗量/tokenscope/frontend` tracks the `tokenscope` repo;
+- git repos that sit directly under a `workspace_roots` entry
+  (Desktop, Documents, `~/projects`, …);
+- paths you add by hand (`extra`), minus paths you `ignore`. Pinned repos stay
+  on top.
+
+**What is checked.** One `git status --porcelain=v2 --branch` per repo plus the
+remote URL and commit dates, in parallel, cached for 60 s. Everything is
+**offline**: TokenScope never runs `git fetch`, so "behind" is as of your last
+fetch, and it never prompts for credentials or writes to the repo.
+
+**Tiers.**
+
+| Situation | Level |
+|---|---|
+| Commits ahead of the upstream (not pushed) | warn |
+| …and the oldest unpushed commit is older than 24 h (`unpushed_danger_hours`) | danger |
+| Uncommitted changes whose newest file is older than 24 h (`dirty_warn_hours`) | warn |
+| Uncommitted changes you are actively editing | ok (shown, not nagged) |
+| No remote, remote is not GitHub, branch has no upstream, detached HEAD | info |
+
+**Reminders.** Warn and danger items appear in the Dashboard alert strip and in
+`get_alerts` as `git_unpushed`, `git_dirty` and `git_no_remote`. On Windows the
+background sync also raises one desktop notification listing the projects that
+need a push, at most once per project per day; clicking it opens the page.
+Turn it off with `desktop_notify`, or test it from the page's settings panel.
+
+All of this lives in `config.json` under `dev_projects` and is editable from
+the page (add / ignore / pin, thresholds, notifications).
+
+---
+
 ## MCP tools
 
-25 tools. Read tools marked ⓟ accept a `project=` argument to narrow the answer
+26 tools. Read tools marked ⓟ accept a `project=` argument to narrow the answer
 to one project (pass a project path or any session directory under it).
 
 | Tool | What it returns |
@@ -281,9 +329,10 @@ to one project (pass a project path or any session directory under it).
 | `get_session_detail` | One session turn by turn: context size, cost, tools, subagent turns, the peak |
 | `get_tools_breakdown` ⓟ | Cost by tool, text-only turns, subagent share by agent type |
 | `get_heatmap` ⓟ | 7×24 local-time matrix of tokens, cost and calls |
-| `get_alerts` ⓟ | What is worth a look right now: spikes, runaway sessions, context bloat, cache, pricing, retention |
+| `get_alerts` ⓟ | What is worth a look right now: spikes, runaway sessions, context bloat, cache, pricing, retention, unpushed git work |
 | `get_weekly_report` ⓟ | Monday–Sunday digest with week-over-week deltas, as JSON plus ready-to-paste Markdown |
 | `get_retention_status` | `cleanupPeriodDays`, last sync, and the rate table's age |
+| `get_dev_projects` | Local repos under development: branch, ahead/behind, uncommitted changes, GitHub remote, and a tiered level with reasons |
 
 > **`update_pricing` is a full replace, not a merge.** Always call `get_pricing`
 > first and carry the existing `models` section through unchanged unless you
@@ -501,6 +550,9 @@ and it only has what a sync captured. Two things prevent gaps:
 | `~/.claude.json` → `oauthAccount` | Plan detection only (org type, rate-limit tier, subscription start) |
 | `~/.claude/settings.json` → `cleanupPeriodDays` | Retention hint only |
 
+The Dev Projects page additionally runs read-only `git status` / `git log` /
+`git remote` in the repos it tracks (no `fetch`, no writes).
+
 It does **not** read `~/.claude/.credentials.json`, and it makes no network
 requests. There is no telemetry.
 
@@ -521,7 +573,7 @@ corrupt each other.
 | File | Contents |
 |---|---|
 | `tokenscope.db` | The event store. **This is the only complete history** — Claude Code prunes its own logs after ~30 days. Back it up occasionally. |
-| `config.json` | `scan_roots`, `port`, `sync_interval_seconds`, `workspace_roots`, `project_aliases`, `subscription` |
+| `config.json` | `scan_roots`, `port`, `sync_interval_seconds`, `workspace_roots`, `project_aliases`, `subscription`, `dev_projects` |
 | `pricing.json` | Rates per family and optional per-model overrides |
 
 `scan_roots` is a list; missing paths are skipped silently. On WSL2 you can add
@@ -545,6 +597,10 @@ the same files, or having two scan roots that overlap, is therefore safe.
   enabling auto-sync (see [Keeping history](#keeping-history)) prevents gaps.
 - Tool-call and subagent columns exist only for transcripts that were still on
   disk when 1.2 first synced; older rows show no tools.
+- Dev Projects compares against the upstream as of your last `git fetch`; it
+  never fetches itself, so "behind" can be stale. Desktop reminders need
+  Windows PowerShell 5.1 and can be suppressed by Focus Assist — the in-app
+  alert is the source of truth.
 - Rates go stale when Anthropic changes prices. `pricing.json` carries a
   `last_verified` date and is editable; edits apply retroactively.
 

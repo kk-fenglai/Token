@@ -14,8 +14,9 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .api import (routes_insights, routes_logs, routes_pricing, routes_projects,
-                  routes_scope, routes_stats, routes_subscription, routes_sync)
+from . import dev_projects
+from .api import (routes_dev_projects, routes_insights, routes_logs, routes_pricing,
+                  routes_projects, routes_scope, routes_stats, routes_subscription, routes_sync)
 from .config import db_path, ensure_pricing_file, load_config
 from .db import get_conn
 from .sync import service
@@ -32,6 +33,12 @@ async def lifespan(app: FastAPI):
     async def scheduler():
         while True:
             await asyncio.to_thread(service.sync_once)
+            # F26: git reminders ride on the same cadence; a git or PowerShell
+            # hiccup must never stop the sync loop.
+            try:
+                await asyncio.to_thread(dev_projects.check_and_notify)
+            except Exception:
+                pass
             await asyncio.sleep(interval)
 
     task = asyncio.create_task(scheduler())
@@ -44,13 +51,13 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="TokenScope", lifespan=lifespan)
 
 for r in (routes_stats, routes_logs, routes_projects, routes_sync, routes_pricing,
-          routes_subscription, routes_scope, routes_insights):
+          routes_subscription, routes_scope, routes_insights, routes_dev_projects):
     app.include_router(r.router, prefix="/api")
 
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "db": str(db_path()), "version": "1.2"}
+    return {"ok": True, "db": str(db_path()), "version": "1.3"}
 
 
 if DIST.exists():

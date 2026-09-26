@@ -33,6 +33,7 @@ export function AlertRow({ a }: { a: AlertItem }) {
   const { money } = useMoney();
   const s = LEVEL_STYLE[a.level];
   const sessionId = typeof a.params.session_id === "string" ? a.params.session_id : null;
+  const projectPath = typeof a.params.path === "string" ? a.params.path : null;
   return (
     <li className={`flex items-start gap-3 rounded border border-border-card border-l-4 ${s.border} bg-surface-card px-4 py-3 text-sm shadow-card`}>
       <span className={`material-symbols-outlined mt-0.5 ${s.iconColor}`}>{s.icon}</span>
@@ -45,6 +46,12 @@ export function AlertRow({ a }: { a: AlertItem }) {
           <Link to={`/sessions/detail?id=${encodeURIComponent(sessionId)}`}
             className="ml-2 whitespace-nowrap font-medium text-primary-container hover:underline">
             {t("alerts.openSession")}
+          </Link>
+        )}
+        {projectPath && !sessionId && (
+          <Link to={`/dev-projects?focus=${encodeURIComponent(projectPath)}`}
+            className="ml-2 whitespace-nowrap font-medium text-primary-container hover:underline">
+            {t("alerts.openProject")}
           </Link>
         )}
       </div>

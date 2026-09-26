@@ -387,3 +387,63 @@ export interface RetentionInfo {
   recommended_days: number;
   pricing: PricingStatus;
 }
+
+// ---- v1.3 F26: dev projects tracker ----
+
+export type DevProjectLevel = "ok" | "info" | "warn" | "danger";
+
+export interface DevProjectItem {
+  path: string;
+  name: string;
+  sources: ("sessions" | "workspace" | "manual")[];
+  pinned: boolean;
+  is_repo: boolean;
+  error: string | null;
+  branch: string | null;
+  detached: boolean;
+  remote_url: string | null;
+  is_github: boolean;
+  github_url: string | null;
+  has_upstream: boolean;
+  ahead: number;
+  behind: number;
+  modified: number;
+  untracked: number;
+  staged: number;
+  changes: number;
+  oldest_unpushed_at: string | null;
+  unpushed_age_hours: number | null;
+  last_commit_at: string | null;
+  newest_change_at: string | null;
+  dirty_age_hours: number | null;
+  last_active: string | null;
+  level: DevProjectLevel;
+  reasons: string[];
+}
+
+export interface DevProjectsSummary {
+  tracked: number;
+  needs_push: number;
+  dirty: number;
+  no_remote: number;
+  ok: number;
+}
+
+export interface DevProjectsConfig {
+  extra: string[];
+  ignored: string[];
+  pinned: string[];
+  active_days: number;
+  unpushed_danger_hours: number;
+  dirty_warn_hours: number;
+  desktop_notify: boolean;
+}
+
+export interface DevProjectsResponse {
+  items: DevProjectItem[];
+  summary: DevProjectsSummary;
+  checked_at: string;
+  git_available: boolean;
+  config: DevProjectsConfig;
+  notify: { last_run: string | null; last_sent: string | null; last_error: string | null };
+}

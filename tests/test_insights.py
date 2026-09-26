@@ -158,6 +158,25 @@ def test_alerts_flag_context_bloat_and_retention(seeded):
     assert levels == sorted(levels, key={"danger": 0, "warn": 1, "info": 2}.get)
 
 
+def test_alerts_include_git_reminders_and_survive_failures(seeded, monkeypatch):
+    from tokenscope import dev_projects
+    canned = [
+        {"kind": "git_unpushed", "level": "danger", "params": {"name": "a", "path": "c:/dev/a", "ahead": 2, "hours": 30}},
+        {"kind": "git_no_remote", "level": "info", "params": {"name": "b", "path": "c:/dev/b", "reason": "no_remote"}},
+    ]
+    monkeypatch.setattr(dev_projects, "alert_items", lambda project=None: canned)
+    got = insights.alerts()
+    kinds = [a["kind"] for a in got["items"]]
+    assert kinds[0] == "git_unpushed" and "git_no_remote" in kinds
+    levels = [a["level"] for a in got["items"]]
+    assert levels == sorted(levels, key={"danger": 0, "warn": 1, "info": 2}.get)
+
+    def boom(project=None):
+        raise RuntimeError("git exploded")
+    monkeypatch.setattr(dev_projects, "alert_items", boom)
+    assert "git_unpushed" not in {a["kind"] for a in insights.alerts()["items"]}
+
+
 def test_pricing_status_and_retention_info(fresh_db, tmp_path):
     ps = insights.pricing_status()
     assert ps["last_verified"] and isinstance(ps["stale"], bool)

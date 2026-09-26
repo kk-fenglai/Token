@@ -66,6 +66,18 @@ DEFAULT_CONFIG = {
     "project_aliases": {},
     # "auto" reads the plan from ~/.claude.json; "manual" pins {plan, monthly_usd}.
     "subscription": {"mode": "auto"},
+    # F26 dev-project tracker: which local git repos to watch and when to nag.
+    # `extra` adds repos discovery would miss, `ignored` hides ones it finds,
+    # `pinned` keeps favourites on top. Hours are the staleness thresholds.
+    "dev_projects": {
+        "extra": [],
+        "ignored": [],
+        "pinned": [],
+        "active_days": 14,
+        "unpushed_danger_hours": 24,
+        "dirty_warn_hours": 24,
+        "desktop_notify": True,
+    },
 }
 
 

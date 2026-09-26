@@ -490,6 +490,13 @@ def alerts(project: str | None = None) -> dict:
                       "params": {"missing": missing, "cleanup_days": ret["cleanup_days"],
                                  "recommended": ret["recommended_days"]}})
 
+    # F26: git push reminders. A git hiccup must never take the strip down.
+    try:
+        from . import dev_projects
+        items.extend(dev_projects.alert_items(project))
+    except Exception:
+        pass
+
     order = {"danger": 0, "warn": 1, "info": 2}
     items.sort(key=lambda a: order[a["level"]])
     return {"generated_at": now.strftime("%Y-%m-%dT%H:%M:%S%z"), "items": items,

@@ -476,10 +476,25 @@ def get_alerts(project: str | None = None) -> dict:
     (today vs 30-day median), week_pace (7-day vs previous 7), runaway_session,
     context_bloat (a session whose context exceeded 150K tokens), cache_efficiency,
     subagent_share, pricing_stale (rate table unverified for >90 days), retention
-    (months with pruned logs / cleanupPeriodDays too low). Each item carries
+    (months with pruned logs / cleanupPeriodDays too low), git_unpushed (local
+    commits not pushed to GitHub), git_dirty (uncommitted changes idle >24h),
+    git_no_remote (repo has no GitHub remote / upstream). Each item carries
     `level` (info|warn|danger) and `params` with the numbers."""
     _ensure_ready()
     return insights.alerts(project)
+
+
+@mcp.tool()
+def get_dev_projects(refresh: bool = False) -> dict:
+    """Local projects under development and their git state: repos seen in
+    recent Claude Code sessions or under workspace_roots, with branch,
+    ahead/behind upstream, uncommitted change counts, GitHub remote, and a
+    tiered `level` (ok|info|warn|danger) plus `reasons` such as unpushed,
+    unpushed_stale, dirty_stale, no_remote. Use it to remind the user what
+    still needs `git push`. refresh=True bypasses the 60 s cache."""
+    _ensure_ready()
+    from . import dev_projects
+    return dev_projects.snapshot(force=refresh)
 
 
 @mcp.tool()

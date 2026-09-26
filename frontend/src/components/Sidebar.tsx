@@ -8,6 +8,7 @@ const NAV = [
   { to: "/insights", icon: "insights", labelKey: "nav.insights", end: false },
   { to: "/billing", icon: "calendar_month", labelKey: "nav.billing", end: false },
   { to: "/projects", icon: "paid", labelKey: "nav.projects", end: false },
+  { to: "/dev-projects", icon: "folder_code", labelKey: "nav.devProjects", end: false },
   { to: "/guide", icon: "school", labelKey: "nav.guide", end: false },
 ];
 
