@@ -1,36 +1,12 @@
 import { useEffect, useState } from "react";
-import { useLocation } from "react-router-dom";
-import type { DevProjectItem, DevProjectLevel, DevProjectsConfig, DevProjectsResponse } from "../api/types";
+import { Link, useLocation } from "react-router-dom";
+import type { DevProjectItem, DevProjectsConfig, DevProjectsResponse } from "../api/types";
 import { useApi } from "../api/useApi";
+import PublishDialog from "../components/PublishDialog";
 import StatCard from "../components/StatCard";
-import { useI18n, type TFunc } from "../i18n";
+import { useI18n } from "../i18n";
+import { LEVEL_BADGE, ROW_ACCENT, canPublish, detailHref, putConfig, reasonText } from "../lib/devProjects";
 import { formatRelative } from "../lib/format";
-
-const LEVEL_BADGE: Record<DevProjectLevel, { cls: string; icon: string }> = {
-  danger: { cls: "bg-error-container text-on-error-container", icon: "error" },
-  warn: { cls: "bg-secondary-container/25 text-secondary", icon: "warning" },
-  info: { cls: "bg-surface text-on-surface-variant", icon: "info" },
-  ok: { cls: "bg-success-container text-on-success-container", icon: "check_circle" },
-};
-
-const ROW_ACCENT: Record<DevProjectLevel, string> = {
-  danger: "border-l-error",
-  warn: "border-l-secondary-container",
-  info: "border-l-outline-variant",
-  ok: "border-l-success",
-};
-
-function reasonText(t: TFunc, p: DevProjectItem, r: string): string {
-  const h = r.startsWith("unpushed") ? p.unpushed_age_hours : p.dirty_age_hours;
-  return t(`devProjects.reasons.${r}`, { h: Math.round(h ?? 0) });
-}
-
-async function putConfig(partial: Partial<DevProjectsConfig>): Promise<void> {
-  const res = await fetch("/api/dev-projects/config", {
-    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(partial),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-}
 
 export default function DevProjects() {
   const { t, tag } = useI18n();
@@ -45,6 +21,7 @@ export default function DevProjects() {
   const [toastState, setToastState] = useState<"idle" | "sent" | "failed">("idle");
   const [form, setForm] = useState<Pick<DevProjectsConfig, "active_days" | "unpushed_danger_hours" | "dirty_warn_hours" | "desktop_notify"> | null>(null);
   const [saved, setSaved] = useState(false);
+  const [publishing, setPublishing] = useState<DevProjectItem | null>(null);
 
   const rel = (iso: string | null | undefined) =>
     formatRelative(iso, tag, { never: t("common.never"), justNow: t("common.justNow") });
@@ -222,7 +199,7 @@ export default function DevProjects() {
                     <tr key={p.path} id={`dp-${p.path}`}
                       className={`border-b border-l-4 border-border-card/60 ${ROW_ACCENT[p.level]} last:border-b-0 hover:bg-surface/60 ${focused ? "bg-primary-container/5" : ""}`}>
                       <td className="py-2.5 pl-2 pr-3 align-top">
-                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${b.cls}`}>
+                        <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${b.cls}`}>
                           <span className="material-symbols-outlined text-[14px]">{b.icon}</span>
                           {t(`devProjects.status.${p.level}`)}
                         </span>
@@ -235,14 +212,24 @@ export default function DevProjects() {
                         )}
                       </td>
                       <td className="px-3 py-2.5 align-top">
-                        <div className="flex items-center gap-1.5 font-medium">
+                        <Link to={detailHref(p.path)} className="group flex items-center gap-1.5 font-medium hover:text-primary-container">
                           {p.pinned && <span className="material-symbols-outlined text-[16px] text-primary-container">push_pin</span>}
-                          {p.name}
-                        </div>
+                          <span className="group-hover:underline">{p.meta?.alias || p.name}</span>
+                          {p.meta?.alias && <span className="text-xs font-normal text-outline">{p.name}</span>}
+                          {p.meta?.stage && (
+                            <span className="rounded-full border border-border-card px-1.5 text-[10px] font-normal text-on-surface-variant">{t(`devDetail.stages.${p.meta.stage}`)}</span>
+                          )}
+                        </Link>
+                        {p.meta?.description && (
+                          <div className="line-clamp-1 max-w-[420px] text-xs text-on-surface-variant" title={p.meta.description}>{p.meta.description}</div>
+                        )}
                         <div className="font-mono text-[11px] text-outline" title={p.path}>{p.path}</div>
-                        <div className="mt-0.5 flex gap-1">
+                        <div className="mt-0.5 flex flex-wrap gap-1">
                           {p.sources.map((s) => (
                             <span key={s} className="rounded bg-surface px-1.5 py-0.5 text-[10px] text-outline">{t(`devProjects.sources.${s}`)}</span>
+                          ))}
+                          {p.meta?.tags.map((tg) => (
+                            <span key={`tag-${tg}`} className="rounded bg-primary-container/10 px-1.5 py-0.5 text-[10px] text-primary-container">#{tg}</span>
                           ))}
                         </div>
                       </td>
@@ -268,6 +255,13 @@ export default function DevProjects() {
                       <td className="px-3 py-2.5 align-top text-xs text-on-surface-variant">{p.last_active ? rel(p.last_active) : "—"}</td>
                       <td className="py-2.5 pl-3 text-right align-top">
                         <div className="flex justify-end gap-0.5">
+                          {canPublish(p) && (
+                            <button onClick={() => setPublishing(p)} title={t("devProjects.publish.button")}
+                              className="flex items-center gap-1 whitespace-nowrap rounded bg-primary-container px-2 py-1 text-xs font-semibold text-on-primary hover:opacity-90">
+                              <span className="material-symbols-outlined text-[16px]">cloud_upload</span>
+                              <span className="hidden 2xl:inline">{t("devProjects.publish.button")}</span>
+                            </button>
+                          )}
                           {p.ahead > 0 && (
                             <button onClick={() => copyPush(p)} title={t("devProjects.copyPush")}
                               className="rounded p-1 text-primary-container hover:bg-surface">
@@ -313,6 +307,11 @@ export default function DevProjects() {
           </button>
         </div>
       </section>
+
+      {publishing && (
+        <PublishDialog path={publishing.path} name={publishing.name}
+          onClose={(changed) => { setPublishing(null); if (changed) refresh(); }} />
+      )}
 
       {cfg && cfg.ignored.length > 0 && (
         <section className="rounded border border-border-card bg-surface-card p-4 shadow-card">

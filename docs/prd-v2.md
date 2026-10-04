@@ -13,6 +13,10 @@
 
 ## 0. 修订记录
 
+**v2.3(2026-09-28)** — 新增 F29 内置 AI 助手(DeepSeek):用量问答、省钱顾问、项目管家、定时巡检。
+
+**v2.2(2026-09-28)** — 新增 F27 一键上传 GitHub、F28 开发项目详情页。F26 只提醒「该推了」,用户还得自己开终端;现在在同一行点一下就能提交 + 推送,没有远程的仓库用 `gh` 直接新建。
+
 **v2.1(2026-09-26)** — 新增 F26 开发项目追踪与 GitHub 推送提醒,随 1.3.0 交付。起因:同时开发多个本地仓库时经常 commit 之后忘记 push;TokenScope 已经从会话日志知道「最近在哪些目录工作」,顺手把 git 状态也看一眼。
 
 **v2.0(2026-09-12)** — 新增 F17–F25 九个功能点,全部在本次迭代中实现并随 1.2.0 交付。
@@ -85,6 +89,9 @@ v1 的查询层把每条 assistant 消息压成四个 token 计数,所有面板�
 | F24 | 数据留存保障与定价时效 | P0 | 已交付 |
 | F25 | 工程改进:路由级代码拆分、汇率快照标注 | P2 | 已交付 |
 | F26 | 开发项目追踪与 GitHub 推送提醒 | P1 | 已交付(1.3.0) |
+| F27 | 开发项目一键上传 GitHub | P1 | 已实现(未发版) |
+| F28 | 开发项目详情页:简介与项目管理 | P1 | 已实现(未发版) |
+| F29 | 内置 AI 助手(DeepSeek) | P1 | 已实现(未发版) |
 
 ### 4.2 F17 — 多币种显示
 
@@ -210,6 +217,68 @@ v1 的查询层把每条 assistant 消息压成四个 token 计数,所有面板�
 
 **非目标。** 不自动 push、不 fetch、不管理 GitHub 认证。
 
+### 4.11b F27 — 一键上传 GitHub
+
+**问题。** F26 的提醒只能「复制 push 命令」;改动没 commit、分支没上游、仓库还没建远程时,用户仍要切到终端处理。
+
+**做什么。** 「开发项目」表格里,凡是还没完全到远程的仓库(领先、有改动、无上游或无远程;排除分离 HEAD 与检查失败)显示「上传到 GitHub」按钮。点开是确认弹窗,预览将要发生的事,确认后一次执行:
+
+| 情形 | 动作 |
+|---|---|
+| 有未提交改动(可取消勾选) | `git add -A` + `git commit -m <说明>`,说明默认 `Update a.py, b.txt and N more`,可编辑 |
+| 有上游 | `git push` |
+| 有远程无上游 | `git push -u <remote> <branch>`(remote 优先 `origin`) |
+| 没有远程 | `gh repo create <name> --private|--public --source . --remote origin --push`;仓库名默认取目录名中的 `[A-Za-z0-9._-]`,可改,可写 `org/name`;默认私有 |
+
+**预览内容。** 待提交文件(`--untracked-files=all`,前 300 个)、将要离开本机的提交(有上游:`@{upstream}..HEAD`;无上游:`HEAD --not --remotes`)、上次 fetch 时落后数的警告;疑似密钥文件(`.env*` 除 `.example/.sample/.template/.dist`、`*.pem`、`*.key`、`id_rsa*`、`credentials*.json` 等)标红并**必须勾选确认**才能上传;超过 50 MB 的文件单独警告。
+
+**安全边界。** 只接受当前快照内的路径;请求的 Host 必须是回环地址(防 DNS rebinding),浏览器 Origin 若存在也必须是回环(防跨站 POST);服务端提交前重新 plan,不信任前端;同一仓库加锁防重复点击;参数以 argv 传给 git / gh,不经 shell;输出里 URL 内嵌的凭据打码。**不 force-push、不 pull、不 rebase**:被拒绝时如实报告,提交留在本地。
+
+**错误归类。** `identity`(未配置 user.name/email)、`rejected`(远程有新提交)、`auth`、`repo_exists`、`rejected_by_github`(GH013 密钥扫描 / 超大文件)等,弹窗给出中文处理建议并展开每一步的命令与输出。
+
+**非目标。** 不做批量上传、不管理 GitHub 认证(依赖 Git 凭据管理器与 `gh auth login`)、MCP 不暴露推送能力。
+
+### 4.11c F28 — 开发项目详情页
+
+**做什么。** 「开发项目」列表里点项目名进入 `/#/dev-projects/detail?path=`,一页看清这个项目是什么、到了哪一步,并能编辑项目信息。
+
+**简介(自动)。** 全部离线、只读:
+- README 第一段(跳过徽章、HTML、代码块、列表、表格)作为自动简介;没有 README 时退回 `package.json` / `pyproject.toml` 的 `description`;
+- 语言占比:`git ls-files` 按字节统计,排除 `dist/ build/ vendor/ node_modules/`、`*.min.*`、锁文件和 `assets/` 下带哈希的构建产物;标记语言(Markdown/JSON/YAML/TOML)只在没有代码时才列出;
+- 技术栈:从 package.json(React / Next.js / Vite / Tailwind / Express / Prisma…)、pyproject / requirements(FastAPI / Django / pytest…)与标志文件(Dockerfile、Cargo.toml、`.claude-plugin`…)识别;
+- git 概况:提交数、首次提交、最近 20 条提交(有 GitHub 远程时链接到 commit)、分支及各自领先/落后、贡献者(按姓名合并);
+- Token 用量:该仓库折叠后的 Token 项目的累计 / 本月 tokens、花费、会话数,并链接到成本详情;折叠到上级目录时注明。
+
+**README 渲染。** 自写的最小 Markdown 渲染器直接生成 React 元素,**不使用 innerHTML**:README 是仓库内容,而本页同源可以提交和推送,README 里的 `<script>` 必须保持为文本。原始 HTML 与图片丢弃,只有 http(s) 链接可点。超过 1500 字符默认折叠,最多读 200 KB。
+
+**编辑(用户信息)。** 显示名称(别名,列表与详情页都用它)、项目简介(可一键用 README 第一段填入)、标签(回车/逗号添加,最多 12 个,可一键采纳识别出的技术栈)、阶段(构思 / 开发中 / 维护中 / 暂停 / 已归档)、备注 / 待办。存在 SQLite 表 `dev_project_meta`(按规范化路径),只在本机,不上传。列表页每行显示别名、阶段、一行简介和标签。
+
+**管理操作。** 上传到 GitHub(F27 弹窗)、用 VS Code 打开(找到 `code` 时)、打开文件夹、置顶 / 取消置顶、忽略(回到列表,可在「已忽略」中恢复)、「同步到 GitHub」把简介写入仓库 About(`gh repo edit --description`,仅 GitHub 远程且点击时执行)。
+
+**安全边界。** 所有 F28 接口只接受快照内的路径,并与 F27 一样要求回环 Host / Origin。
+
+### 4.11d F29 — 内置 AI 助手(DeepSeek)
+
+**问题。** 看板能回答「花了多少」,但「为什么、怎么少花、哪些项目该处理」仍要用户自己翻多个页面;开发项目的提交说明、简介也要手写。
+
+**做什么。** 侧栏新增「AI 助手」页面(左会话列表 / 右对话),其他页面右下角悬浮按钮打开 440px 抽屉,消息随附当前页面上下文(路由 + 查询参数,「这个项目 / 这个会话」即解析为其中的 path / id)。四个职责:用量问答、省钱顾问、项目管家、定时巡检。
+
+**模型。** DeepSeek 的 OpenAI 兼容 Chat Completions(`openai` SDK,base_url `https://api.deepseek.com`),默认 `deepseek-flash`,可选 `deepseek-v4-pro`;模型名在设置中可编辑。思考模式默认开启(`extra_body.thinking`)。**带 `tools` 的请求必须把历史中每条 assistant 的 `reasoning_content` 原样回传**——消息表只追加、完整保存 content / reasoning_content / tool_calls,系统提示为常量、页面上下文放在 user 消息里,保证请求前缀稳定以命中 DeepSeek 前缀缓存。
+
+**工具与权限(`agent/tools.py` 白名单即安全边界)。** 复用 `mcp_server` 的 25 个函数(`inspect.signature` → pydantic 生成并校验 JSON Schema,去掉 `anyOf/null/title`)+ 8 个助手专用工具,按 read / write / external 分类;不暴露 `launch_dashboard`、`platform_*`、`set_session_requirement`;没有 shell、没有文件编辑。用户选择「完全自动」:默认不询问直接执行,每次调用都在对话中显示并写入 `agent_tool_calls` 审计表;可开启「执行修改或推送前先问我」(write / external 调用发 `confirm_required`,5 分钟无应答视为拒绝)。**与设置无关的硬限制:** 每轮最多 3 次 external;`publish_project` 只建私有仓库、从不强推、遇疑似密钥或 >50 MB 文件直接拒绝;`get_repo_changes` 不读取疑似密钥文件的 diff 正文;路径必须在开发项目快照内;工具结果超 16k 字符按最长列表对半截断并标 `_truncated`。
+
+**循环(`agent/loop.py`)。** SSE 事件:run_start / step / reasoning_delta / text_delta / tool_call / confirm_required / tool_result / usage / notice / error / done,15 s 心跳。每轮最多 12 步;工具顺序执行、线程 + 超时;参数 JSON 非法时回传工具错误并把历史里的参数存为 `{}`;每会话同时只有一个运行(409);取消、断线、异常时为所有未回应的 tool_call_id 补 `{"error": ...}`,保证下一次请求合法;上下文估算超 `max_context_tokens` 时把较早的工具结果替换为省略标记。错误映射:auth / balance(402)/ rate_limit / network / bad_request / bad_model / server_busy。
+
+**定时巡检(`agent/patrol.py`)。** `config.agent.patrol`(默认关闭;每天或每周某天的 HH:MM)。由 web 调度循环以独立 task 触发,按周期键 + meta `agent:patrol:last` 去重,错过时段下次补跑。先确定性收集事实(告警、开发项目、周报、留存、助手花费),有 Key 时以**只读工具集**、关闭思考、最多 6 步生成报告,无 Key 或失败时写简版报告;存为 `kind=patrol` 会话。仅对**新出现**的 warn/danger 指纹弹桌面通知(`/#/agent?c=<id>`),F26 已提醒的 `git_*` 不重复。
+
+**Key 与设置。** Key 存 `data_dir/secrets.json`,Windows 下用 DPAPI(ctypes,无新依赖)加密;`DEEPSEEK_API_KEY` 环境变量优先;接口只返回掩码,Key 只写不读。
+
+**助手自身花费。** 每次请求记录 cache hit / miss / output tokens 与按 DeepSeek 公开价估算的 USD(高峰价,非高峰半价),存 `agent_requests`,**不进 `events`**,不影响 Claude Code 的统计;对话底部与会话列表显示,并有 `get_agent_usage` 工具。
+
+**数据出境。** 配置 Key 后,提问、页面上下文与工具返回的数据会发送到 DeepSeek;侧栏页脚随之由「数据不出本机」改为明确提示,设置页有隐私说明。
+
+**为什么不用 DeepSeek Harness。** 它是 Node/TS 的编码智能体(默认带文件与终端工具、独立 Web UI、开发预览版并声明会有破坏性变更);本功能的价值在 TokenScope 自己的工具,且在「完全自动」下工具白名单是最重要的安全边界,因此在现有 Python 进程内自写循环。已有 MCP 客户端的 harness 可直接接 `tokenscope-mcp`。
+
 ### 4.12 横切要求(在 v1 §4.5 基础上)
 
 - **提醒文案的换算。** 提醒的 `params` 是裸数字;前端按键名决定格式:`today / median / this / prev / cost` 走货币换算,`ctx_max` 走 token 缩写,`delta_pct` 带符号。新增提醒种类时同步维护这张映射。
@@ -265,6 +334,20 @@ v1 的查询层把每条 assistant 消息压成四个 token 计数,所有面板�
 | POST | `/api/dev-projects/notify-test` | F26 发一条测试 toast |
 | POST | `/api/dev-projects/notify-now` | F26 立即跑一遍提醒(遵守每日去重) |
 | POST | `/api/dev-projects/open` | F26 在资源管理器打开(仅限快照内的路径) |
+| GET | `/api/dev-projects/publish-plan?path=` | F27 上传预览(只读;仅回环 Host/Origin) |
+| POST | `/api/dev-projects/publish` | F27 提交 + 推送 / 新建仓库(`{path, commit, message, repo_name, private}`) |
+| GET | `/api/dev-projects/detail?path=` | F28 详情(README、语言、技术栈、git 概况、Token 用量、用户信息) |
+| PUT | `/api/dev-projects/meta` | F28 部分更新 `{path, alias, description, tags, stage, notes}`,422 校验 |
+| POST | `/api/dev-projects/open-editor` | F28 用 VS Code 打开(未安装时 501) |
+| POST | `/api/dev-projects/github-description` | F28 `gh repo edit --description` 同步简介 |
+| POST | `/api/agent/chat` | F29 对话(SSE 流);`{message, conversation_id?, page_context?}` |
+| POST | `/api/agent/runs/{id}/cancel` · `/confirm` | F29 停止运行 / 批准或拒绝待确认的操作 |
+| GET / PATCH / DELETE | `/api/agent/conversations[/{id}]` | F29 会话列表、详情、重命名、删除 |
+| GET / PUT | `/api/agent/settings` | F29 设置(含 Key 掩码与来源) |
+| PUT / DELETE | `/api/agent/key` | F29 保存 / 删除 Key(只写) |
+| POST | `/api/agent/test` | F29 测试连接(列出可用模型) |
+| GET | `/api/agent/usage?range=` | F29 助手自身 DeepSeek 花费(估算) |
+| GET / POST | `/api/agent/patrol` · `/patrol/run` | F29 巡检状态 / 立即巡检 |
 
 ### 5.4 MCP 工具(v2.0 新增 7 个;v2.1 新增 `get_dev_projects`,共 26 个)
 
@@ -272,7 +355,7 @@ v1 的查询层把每条 assistant 消息压成四个 token 计数,所有面板�
 
 ### 5.5 前端
 
-新页面:`Sessions`、`SessionDetail`、`Insights`,v2.1 新增 `DevProjects`;新组件:`AlertStrip`(含可复用的 `AlertRow`)、`ToolsTable`、`Heatmap`、`ContextChart`;`format.formatDuration`。侧栏新增「会话分析」「洞察与周报」。
+新页面:`Sessions`、`SessionDetail`、`Insights`,v2.1 新增 `DevProjects`,v2.3 新增 `Agent` 页与 `components/agent/*`(对话、抽屉、设置)、`lib/sse`、`lib/pageContext`;v2.2 新增 `PublishDialog`、`DevProjectDetail` 页与 `lib/markdown`(安全 README 渲染)、`lib/devProjects`;新组件:`AlertStrip`(含可复用的 `AlertRow`)、`ToolsTable`、`Heatmap`、`ContextChart`;`format.formatDuration`。侧栏新增「会话分析」「洞察与周报」。
 
 ---
 
@@ -286,6 +369,9 @@ v1 的查询层把每条 assistant 消息压成四个 token 计数,所有面板�
 | README、SKILL.md 更新 | 已更新(与代码一起待提交) |
 | F26 开发项目追踪 | 已交付(2026-09-26),后端 78 个测试通过,前端构建通过 |
 | 打标签 v1.3.0 并推送,`.mcp.json` / `hooks.json` 改为 `@v1.3.0` | **待做** |
+| F27 一键上传 GitHub | 已实现(2026-09-28),后端 110 个测试通过,前端构建通过;待提交发版 |
+| F28 开发项目详情页 | 已实现(2026-09-28),后端 121 个测试通过,前端构建通过;待提交发版 |
+| F29 内置 AI 助手 | 已实现(2026-09-28),后端 177 个测试通过(含假 DeepSeek 客户端的循环 / 回传 / 取消 / 巡检测试),前端构建通过,已用本地模拟服务端到端验证;待用户配置真实 Key 后实测,待提交发版 |
 
 ---
 
@@ -308,6 +394,14 @@ v1 的查询层把每条 assistant 消息压成四个 token 计数,所有面板�
 **R10 OneDrive 中的仓库。** 按需文件可能让 `git status` 先下载再比较,15 s 超时兜底并显示为 `git_error`;用户可忽略该仓库。`GIT_OPTIONAL_LOCKS=0` 避免每 5 分钟重写 `.git/index` 触发同步。
 
 **R11 桌面通知依赖 Windows PowerShell 5.1。** pwsh 7 没有 WinRT 投影;专注助手可能静默压制。站内提醒是最终依据。
+
+**R12 自动模式下的提示注入。** README、diff、提交信息与项目备注都会进入上下文,恶意内容可能诱导助手推送或改数据。缓解:系统提示声明工具输出是数据不是指令、只执行本对话中用户要求的副作用;代码层硬限制(白名单、每轮 3 次外部操作、只建私有仓库、拒绝疑似密钥与大文件、不读密钥文件 diff);可一键开启确认模式。
+
+**R13 数据出境。** 配置 Key 即意味着用量统计与项目内容发往 DeepSeek;页脚与设置页明确提示,Key 删除即恢复完全本地。
+
+**R14 模型名与价格漂移。** DeepSeek 更名频繁;模型名与价格均可在设置中编辑,`测试连接` 会指出配置的模型是否仍存在。
+
+**R15 `reasoning_content` 回传规则。** 依据官方文档实现「带 tools 时全部回传」;若 DeepSeek 调整规则,只需改 `store.load_api_messages` 一处。
 
 **Q5 是否联网拉汇率?** 倾向不做:与「数据不出本机」的承诺冲突,且手填一次即可。已在弹层标注快照日期。
 

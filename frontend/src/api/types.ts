@@ -419,6 +419,8 @@ export interface DevProjectItem {
   last_active: string | null;
   level: DevProjectLevel;
   reasons: string[];
+  /** F28 user notes; absent on responses that bypass the list route. */
+  meta?: DevProjectMeta;
 }
 
 export interface DevProjectsSummary {
@@ -446,4 +448,139 @@ export interface DevProjectsResponse {
   git_available: boolean;
   config: DevProjectsConfig;
   notify: { last_run: string | null; last_sent: string | null; last_error: string | null };
+}
+
+export type PublishAction = "push" | "push_upstream" | "create_repo" | "nothing" | "blocked";
+export interface PublishPlan {
+  path: string;
+  name: string;
+  branch: string | null;
+  detached: boolean;
+  remote: string | null;
+  remote_url: string | null;
+  is_github: boolean;
+  github_url: string | null;
+  has_upstream: boolean;
+  ahead: number;
+  behind: number;
+  files: { path: string; status: string }[];
+  file_count: number;
+  sensitive: string[];
+  large: string[];
+  commits: { sha: string; subject: string }[];
+  has_commits: boolean;
+  action: PublishAction;
+  blocked_reason: string | null;
+  gh: { available: boolean; user: string | null } | null;
+  default_message: string;
+  default_repo_name: string;
+}
+export interface PublishResult {
+  ok: boolean;
+  error: string | null;
+  steps: { step: string; cmd: string; ok: boolean; output: string }[];
+  github_url: string | null;
+  ahead: number;
+  changes: number;
+}
+
+export type DevProjectStage = "idea" | "active" | "maintenance" | "paused" | "archived";
+export interface DevProjectMeta {
+  alias: string;
+  description: string;
+  tags: string[];
+  stage: DevProjectStage | "";
+  notes: string;
+  updated_at: string | null;
+}
+export interface DevProjectDetail {
+  item: DevProjectItem;
+  meta: DevProjectMeta;
+  readme: { file: string; content: string; truncated: boolean; markdown: boolean; title: string | null; summary: string | null } | null;
+  languages: { name: string; bytes: number; pct: number }[];
+  stack: string[];
+  manifest: { kind: string; name?: string | null; description?: string | null; version?: string | null } | null;
+  git: {
+    commit_count: number | null;
+    first_commit_at: string | null;
+    file_count: number;
+    recent_commits: { sha: string; at: string; author: string; subject: string }[];
+    branches: { name: string; upstream: string | null; current: boolean; ahead: number; behind: number; gone: boolean; last_commit_at: string | null }[];
+    contributors: { name: string; commits: number }[];
+  };
+  tokens: { key: string; name: string; tokens: number; cost: number; sessions: number; month_tokens: number; last_active: string | null; same_path: boolean } | null;
+  editor: boolean;
+  stages: DevProjectStage[];
+}
+
+// ------------------------------------------------------------- F29 agent ----
+export type AgentToolKind = "read" | "write" | "external";
+export type AgentToolStatus = "pending" | "running" | "ok" | "error" | "blocked" | "denied" | "awaiting";
+export interface AgentToolCall {
+  id: string;
+  name: string;
+  args: string | null;
+  kind: AgentToolKind | null;
+  status: AgentToolStatus;
+  result: string | null;
+  chars: number | null;
+  ms: number | null;
+  runId?: string;
+}
+export interface AgentUserMessage { role: "user"; content: string; seq?: number; at?: string }
+export interface AgentAssistantMessage {
+  role: "assistant";
+  content: string;
+  reasoning: string;
+  tool_calls: AgentToolCall[];
+  seq?: number;
+  at?: string;
+}
+export type AgentMessage = AgentUserMessage | AgentAssistantMessage;
+export interface AgentConversationSummary {
+  id: string;
+  kind: "chat" | "patrol";
+  title: string;
+  created_at: string;
+  updated_at: string;
+  model: string | null;
+  cost_usd: number;
+  running: boolean;
+}
+export interface AgentUsage { hit: number; miss: number; completion: number; cost_usd: number; requests: number }
+export interface AgentConversation extends Omit<AgentConversationSummary, "cost_usd"> {
+  messages: AgentMessage[];
+  usage: AgentUsage;
+}
+export interface AgentPatrolConfig {
+  enabled: boolean;
+  schedule: "daily" | "weekly";
+  time: string;
+  weekday: number;
+  use_llm: boolean;
+  notify: boolean;
+  thinking: boolean;
+}
+export interface AgentSettings {
+  base_url: string;
+  model: string;
+  models: string[];
+  thinking: boolean;
+  confirm_side_effects: boolean;
+  max_iterations: number;
+  max_context_tokens: number;
+  max_external_calls: number;
+  pricing: Record<string, { input_miss: number; input_hit: number; output: number }>;
+  patrol: AgentPatrolConfig;
+  key: { configured: boolean; source: "env" | "stored" | "none"; masked: string | null };
+  patrol_status: { last_run: string | null; last_conversation: string | null; last_error: string | null; running: boolean };
+}
+export interface AgentUsageSummary {
+  range: string;
+  requests: number;
+  cost_usd: number;
+  cache_hit_rate: number | null;
+  tokens: { input_cache_hit: number; input_cache_miss: number; output: number; reasoning: number };
+  by_model: { model: string; cost_usd: number; requests: number; tokens: number }[];
+  daily: { date: string; cost_usd: number }[];
 }

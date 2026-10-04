@@ -1,19 +1,25 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { useI18n } from "../i18n";
+import { useAgentSettings } from "./agent/agentStore";
 
 const NAV = [
   { to: "/", icon: "dashboard", labelKey: "nav.dashboard", end: true },
-  { to: "/logs", icon: "receipt_long", labelKey: "nav.logs", end: false },
-  { to: "/sessions", icon: "forum", labelKey: "nav.sessions", end: false },
-  { to: "/insights", icon: "insights", labelKey: "nav.insights", end: false },
+  // One entry for the three tabs in AnalysisLayout; it opens the first tab and
+  // stays highlighted on any of them (and on a session's detail page).
+  { to: "/logs", icon: "query_stats", labelKey: "nav.analysis", end: false, also: ["/sessions", "/insights"] },
   { to: "/billing", icon: "calendar_month", labelKey: "nav.billing", end: false },
   { to: "/projects", icon: "paid", labelKey: "nav.projects", end: false },
   { to: "/dev-projects", icon: "folder_code", labelKey: "nav.devProjects", end: false },
+  { to: "/agent", icon: "smart_toy", labelKey: "nav.agent", end: false },
   { to: "/guide", icon: "school", labelKey: "nav.guide", end: false },
 ];
 
 export default function Sidebar() {
   const { t } = useI18n();
+  const { pathname } = useLocation();
+  // With the assistant configured, questions and tool results go to DeepSeek,
+  // so "data never leaves this machine" would no longer be true.
+  const agentOn = !!useAgentSettings()?.key.configured;
   return (
     <aside className="fixed inset-y-0 left-0 flex w-[280px] flex-col border-r border-border-card bg-surface-card">
       <div className="px-6 pb-4 pt-6">
@@ -28,7 +34,7 @@ export default function Sidebar() {
             end={item.end}
             className={({ isActive }) =>
               `flex items-center gap-3 rounded px-4 py-2.5 text-[15px] font-medium transition-colors ${
-                isActive
+                isActive || item.also?.some((p) => pathname === p || pathname.startsWith(`${p}/`))
                   ? "bg-primary-container text-on-primary"
                   : "text-on-surface-variant hover:bg-surface"
               }`
@@ -40,7 +46,7 @@ export default function Sidebar() {
         ))}
       </nav>
       <div className="mt-auto border-t border-border-card px-6 py-4 text-xs text-outline">
-        {t("nav.footer")}
+        {agentOn ? t("nav.footerAgent") : t("nav.footer")}
       </div>
     </aside>
   );

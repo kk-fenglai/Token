@@ -1,6 +1,8 @@
 import { Suspense, lazy, useMemo, useState } from "react";
 import { HashRouter, Route, Routes, useLocation } from "react-router-dom";
 import { SyncContext } from "./api/useApi";
+import AgentDock from "./components/agent/AgentDock";
+import AnalysisLayout from "./components/AnalysisLayout";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import { useI18n } from "./i18n";
@@ -17,18 +19,22 @@ const Sessions = lazy(() => import("./pages/Sessions"));
 const SessionDetail = lazy(() => import("./pages/SessionDetail"));
 const Insights = lazy(() => import("./pages/Insights"));
 const DevProjects = lazy(() => import("./pages/DevProjects"));
+const DevProjectDetail = lazy(() => import("./pages/DevProjectDetail"));
+const Agent = lazy(() => import("./pages/Agent"));
 
 const TITLE_KEYS: Record<string, string> = {
   "/": "nav.dashboard",
-  "/logs": "nav.logs",
+  "/logs": "nav.analysis",
   "/billing": "nav.billing",
   "/projects": "nav.projects",
   "/projects/detail": "nav.projectDetail",
   "/guide": "nav.guide",
-  "/sessions": "nav.sessions",
+  "/sessions": "nav.analysis",
   "/sessions/detail": "nav.sessionDetail",
-  "/insights": "nav.insights",
+  "/insights": "nav.analysis",
   "/dev-projects": "nav.devProjects",
+  "/dev-projects/detail": "nav.devProjectDetail",
+  "/agent": "nav.agent",
 };
 
 function Shell() {
@@ -44,18 +50,23 @@ function Shell() {
           <Suspense fallback={<div className="flex h-48 items-center justify-center text-sm text-on-surface-variant">{t("common.loading")}</div>}>
             <Routes>
               <Route path="/" element={<Dashboard />} />
-              <Route path="/logs" element={<UsageLogs />} />
-              <Route path="/sessions" element={<Sessions />} />
+              <Route element={<AnalysisLayout />}>
+                <Route path="/logs" element={<UsageLogs />} />
+                <Route path="/sessions" element={<Sessions />} />
+                <Route path="/insights" element={<Insights />} />
+              </Route>
               <Route path="/sessions/detail" element={<SessionDetail />} />
-              <Route path="/insights" element={<Insights />} />
               <Route path="/billing" element={<MonthlyBilling />} />
               <Route path="/projects" element={<ProjectCosts />} />
               <Route path="/projects/detail" element={<ProjectDetail />} />
               <Route path="/guide" element={<TokenGuide />} />
               <Route path="/dev-projects" element={<DevProjects />} />
+              <Route path="/dev-projects/detail" element={<DevProjectDetail />} />
+              <Route path="/agent" element={<Agent />} />
             </Routes>
           </Suspense>
         </main>
+        <AgentDock title={key ? t(key) : undefined} />
       </div>
     </div>
   );

@@ -26,6 +26,7 @@ Three ways to use it, installable together or separately:
 - [The dashboard](#the-dashboard)
 - [Sessions, alerts and the weekly report](#sessions-alerts-and-the-weekly-report)
 - [Dev Projects and push reminders](#dev-projects-and-push-reminders)
+- [AI assistant (DeepSeek)](#ai-assistant-deepseek)
 - [MCP tools](#mcp-tools)
 - [The `/tokenscope` skill](#the-tokenscope-skill)
 - [Model granularity and pricing](#model-granularity-and-pricing)
@@ -538,6 +539,57 @@ and it only has what a sync captured. Two things prevent gaps:
    `scripts/install-autosync.ps1` (Windows scheduled task, daily + at logon) or
    `scripts/install-autosync.sh` (cron) run it on a schedule.
 
+## AI assistant (DeepSeek)
+
+An optional assistant lives in the sidebar (**AI 助手**) and behind a floating
+button on every page. It answers usage questions, suggests concrete savings,
+looks after your dev projects, and can run a scheduled patrol. It runs on
+DeepSeek's API (`deepseek-flash` by default, `deepseek-v4-pro` selectable) and
+is off until you add a key.
+
+**Setup.** Open the assistant → settings → paste a key from
+platform.deepseek.com → *Test connection*. The key is stored in
+`secrets.json` in the data folder (DPAPI-encrypted for your Windows user) and is
+never shown again, only a mask. `DEEPSEEK_API_KEY` in the environment takes
+precedence. Model ids are editable text, because DeepSeek renames models.
+
+**What it can do.** It calls TokenScope's own functions — the same ones the MCP
+server exposes, plus a few assistant-only tools — and nothing else: there is no
+shell and no file editing.
+
+| Kind | Tools |
+|---|---|
+| read | every `get_*` MCP tool, `sync_now`, an efficiency snapshot, dev-project detail, upload plan, uncommitted diff, its own spend |
+| write (local) | pricing, subscription pin, project aliases, workspace roots, project notes (alias / description / tags / stage / notes) |
+| external | upload a project to GitHub (commit + push, or create a **private** repo via `gh`), set the GitHub repo description |
+
+By default it acts without asking (every tool call is shown in the chat and
+kept in an audit log); switch on *Ask before changing data or pushing* to
+approve each write. Regardless of that setting: at most 3 external actions per
+turn, never a force-push, only private repos, and a commit that would include
+secret-looking or >50 MB files is refused — review those in the upload dialog.
+Diff bodies of secret-looking files are never read.
+
+**Patrol.** Daily or weekly at a set time (off by default). It collects alerts,
+dev-project state and the weekly numbers, has the assistant write a short report
+with **read-only** tools, stores it under *Patrol reports*, and raises a desktop
+notification only for problems it has not reported before. Without a key it
+still writes a plain report.
+
+**Cost.** The assistant's own DeepSeek usage (cache hits / misses / output,
+estimated at DeepSeek list prices, off-peak at half) is shown per chat and for
+the last 30 days. It is stored separately and never mixed into the Claude Code
+numbers.
+
+**Privacy.** With a key configured, your questions, the page you are on and
+whatever the tools return (usage statistics, READMEs, diffs, project notes) are
+sent to DeepSeek. The sidebar footer says so while the assistant is enabled.
+
+**Why not an external agent harness?** TokenScope's value is its own tools, and
+under automatic mode a tight whitelist is the main safety boundary, so the loop
+runs in-process. If you already use an MCP-capable harness (Claude Code,
+DeepSeek Harness, …), point it at `tokenscope-mcp` instead — no code needed.
+
 ---
 
 ## Data, config and privacy
@@ -554,7 +606,9 @@ The Dev Projects page additionally runs read-only `git status` / `git log` /
 `git remote` in the repos it tracks (no `fetch`, no writes).
 
 It does **not** read `~/.claude/.credentials.json`, and it makes no network
-requests. There is no telemetry.
+requests — unless you enable the [AI assistant](#ai-assistant-deepseek), which
+talks to DeepSeek, or use one-click upload, which pushes to GitHub. There is no
+telemetry.
 
 Note what the transcript files contain: message IDs, timestamps, token counts,
 model IDs, session IDs, and the working directory of each session. Directory
@@ -573,8 +627,9 @@ corrupt each other.
 | File | Contents |
 |---|---|
 | `tokenscope.db` | The event store. **This is the only complete history** — Claude Code prunes its own logs after ~30 days. Back it up occasionally. |
-| `config.json` | `scan_roots`, `port`, `sync_interval_seconds`, `workspace_roots`, `project_aliases`, `subscription`, `dev_projects` |
+| `config.json` | `scan_roots`, `port`, `sync_interval_seconds`, `workspace_roots`, `project_aliases`, `subscription`, `dev_projects`, `agent` |
 | `pricing.json` | Rates per family and optional per-model overrides |
+| `secrets.json` | The DeepSeek API key (DPAPI-encrypted on Windows), only if you set one |
 
 `scan_roots` is a list; missing paths are skipped silently. On WSL2 you can add
 `\\wsl$\Ubuntu\home\<user>\.claude\projects` alongside the Windows path.
