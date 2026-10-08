@@ -279,6 +279,18 @@ v1 的查询层把每条 assistant 消息压成四个 token 计数,所有面板�
 
 **为什么不用 DeepSeek Harness。** 它是 Node/TS 的编码智能体(默认带文件与终端工具、独立 Web UI、开发预览版并声明会有破坏性变更);本功能的价值在 TokenScope 自己的工具,且在「完全自动」下工具白名单是最重要的安全边界,因此在现有 Python 进程内自写循环。已有 MCP 客户端的 harness 可直接接 `tokenscope-mcp`。
 
+### 4.11b F30 灵感板块(个人需求发现)
+
+依据《灵感网站 PRD · 个人私用版》(2026-10-04):从 TrustMRR 的付费信号反推生活中的需求,只在本机私用。侧栏新增「灵感」(`/#/ideas`),六个标签页:本周、付费信号、需求看板、生活观察、对比、数据源;另有产品详情 `/ideas/signal`、需求卡片 `/ideas/card`、搜索 `/ideas/search`。界面只做中文。
+
+**数据源(`ideas_sync.py`)。** 只用官方接口,不抓网页。每次同步先拉公开发现接口 `/api/ai/discovery`(无需 Key,美元);配置个人 `tmrr_` Key 后再按 MRR 区间(默认 $1k–$20k)翻 `/api/v1/startups`(美分,每页 10 条)并对新增或 MRR 变动 > 10% 的产品拉详情。节流 10 次/分钟,遇 429 等到重置时间;每次请求预算 `max_requests`(默认 120),列表页游标存 meta 断点续传。由 web 调度循环按 `ideas.sync_hours`(默认 24)在独立线程触发,也可手动。无 Key 时详情页可按需读取公开 Markdown 页面(1 次请求,缓存在库)。Key 与 DeepSeek 一样用 DPAPI 存在 `secrets.json`(条目名 `trustmrr`),环境变量 `TRUSTMRR_API_KEY` 优先。
+
+**数据(`ideas.py`,同一 SQLite)。** `idea_products / idea_snapshots / idea_marks / idea_clusters / idea_cluster_products / idea_cards / idea_observations / idea_validations / idea_sync_runs`。首次同步看到的产品标为 baseline,不算“本周新增”。创始人自填文本按纯文本存储与渲染。
+
+**好需求的标准。** 卡片带 5 条门槛、6 项 0–2 分评分、6 条反面信号;≥ 9 分本周验证、6–8 观察、≤ 5 放弃,每条反面信号降一档,门槛未全过时提示“门槛未全过”。付费强度、普遍性、趋势、有人付钱、持续付钱、头部独占由簇内数据给出建议,其余由我判断。离开草稿要求簇内 ≥ 3 个产品且填写“生活映射”(409 `draft_rule`)。待验证超过 14 天没动的卡片在本周页置顶标红。北极星:本月完成验证的卡片数。
+
+**边界。** 全部接口走 loopback 守卫;导出 Markdown 只含我写的内容与原页面链接,不含指标;不接 AI(把 TrustMRR 数据送入模型是否允许尚未确认)。
+
 ### 4.12 横切要求(在 v1 §4.5 基础上)
 
 - **提醒文案的换算。** 提醒的 `params` 是裸数字;前端按键名决定格式:`today / median / this / prev / cost` 走货币换算,`ctx_max` 走 token 缩写,`delta_pct` 带符号。新增提醒种类时同步维护这张映射。

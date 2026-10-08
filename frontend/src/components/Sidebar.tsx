@@ -10,6 +10,7 @@ const NAV = [
   { to: "/billing", icon: "calendar_month", labelKey: "nav.billing", end: false },
   { to: "/projects", icon: "paid", labelKey: "nav.projects", end: false },
   { to: "/dev-projects", icon: "folder_code", labelKey: "nav.devProjects", end: false },
+  { to: "/ideas", icon: "lightbulb", labelKey: "nav.ideas", end: false },
   { to: "/agent", icon: "smart_toy", labelKey: "nav.agent", end: false },
   { to: "/guide", icon: "school", labelKey: "nav.guide", end: false },
 ];

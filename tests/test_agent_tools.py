@@ -58,7 +58,7 @@ def test_side_effect_kinds():
     write = {n for n, s in reg.items() if s.kind == "write"}
     assert external == {"publish_project", "push_github_description"}
     assert write == {"update_pricing", "set_subscription", "set_project_alias", "set_workspace_roots",
-                     "save_project_meta"}
+                     "save_project_meta", "add_project_todo"}
     assert "private" not in reg["publish_project"].parameters["properties"]  # always private
 
 

@@ -3,6 +3,7 @@ import { HashRouter, Route, Routes, useLocation } from "react-router-dom";
 import { SyncContext } from "./api/useApi";
 import AgentDock from "./components/agent/AgentDock";
 import AnalysisLayout from "./components/AnalysisLayout";
+import IdeasLayout from "./components/IdeasLayout";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import { useI18n } from "./i18n";
@@ -21,6 +22,15 @@ const Insights = lazy(() => import("./pages/Insights"));
 const DevProjects = lazy(() => import("./pages/DevProjects"));
 const DevProjectDetail = lazy(() => import("./pages/DevProjectDetail"));
 const Agent = lazy(() => import("./pages/Agent"));
+const IdeasWeek = lazy(() => import("./pages/IdeasWeek"));
+const IdeasSignals = lazy(() => import("./pages/IdeasSignals"));
+const IdeasSignalDetail = lazy(() => import("./pages/IdeasSignalDetail"));
+const IdeasNeeds = lazy(() => import("./pages/IdeasNeeds"));
+const IdeasCard = lazy(() => import("./pages/IdeasCard"));
+const IdeasInbox = lazy(() => import("./pages/IdeasInbox"));
+const IdeasCompare = lazy(() => import("./pages/IdeasCompare"));
+const IdeasSettings = lazy(() => import("./pages/IdeasSettings"));
+const IdeasSearch = lazy(() => import("./pages/IdeasSearch"));
 
 const TITLE_KEYS: Record<string, string> = {
   "/": "nav.dashboard",
@@ -37,10 +47,14 @@ const TITLE_KEYS: Record<string, string> = {
   "/agent": "nav.agent",
 };
 
+function titleKey(pathname: string): string | undefined {
+  return TITLE_KEYS[pathname] ?? (pathname.startsWith("/ideas") ? "nav.ideas" : undefined);
+}
+
 function Shell() {
   const location = useLocation();
   const { t } = useI18n();
-  const key = TITLE_KEYS[location.pathname];
+  const key = titleKey(location.pathname);
   return (
     <div className="min-h-screen">
       <Sidebar />
@@ -63,6 +77,17 @@ function Shell() {
               <Route path="/dev-projects" element={<DevProjects />} />
               <Route path="/dev-projects/detail" element={<DevProjectDetail />} />
               <Route path="/agent" element={<Agent />} />
+              <Route element={<IdeasLayout />}>
+                <Route path="/ideas" element={<IdeasWeek />} />
+                <Route path="/ideas/signals" element={<IdeasSignals />} />
+                <Route path="/ideas/signal" element={<IdeasSignalDetail />} />
+                <Route path="/ideas/needs" element={<IdeasNeeds />} />
+                <Route path="/ideas/card" element={<IdeasCard />} />
+                <Route path="/ideas/inbox" element={<IdeasInbox />} />
+                <Route path="/ideas/compare" element={<IdeasCompare />} />
+                <Route path="/ideas/settings" element={<IdeasSettings />} />
+                <Route path="/ideas/search" element={<IdeasSearch />} />
+              </Route>
             </Routes>
           </Suspense>
         </main>

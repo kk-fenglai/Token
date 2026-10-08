@@ -70,8 +70,8 @@ def _read() -> dict:
         return {}
 
 
-def _stored_key() -> str | None:
-    entry = _read().get("deepseek")
+def _stored_key(name: str = "deepseek") -> str | None:
+    entry = _read().get(name)
     if not isinstance(entry, dict) or not isinstance(entry.get("value"), str):
         return None
     try:
@@ -92,7 +92,9 @@ def get_api_key() -> tuple[str | None, Source]:
     return (stored, "stored") if stored else (None, "none")
 
 
-def set_api_key(key: str) -> None:
+def set_api_key(key: str, name: str = "deepseek") -> None:
+    """Store a key under `name` ("deepseek", or "trustmrr" for the
+    inspiration board) — every entry gets the same DPAPI treatment."""
     key = key.strip()
     if not key or len(key) > 400 or any(c.isspace() for c in key):
         raise ValueError("invalid key")
@@ -101,7 +103,7 @@ def set_api_key(key: str) -> None:
     else:
         entry = {"enc": "plain", "value": key}
     data = _read()
-    data["deepseek"] = entry
+    data[name] = entry
     path = _path()
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
@@ -112,9 +114,9 @@ def set_api_key(key: str) -> None:
     os.replace(tmp, path)
 
 
-def clear_api_key() -> None:
+def clear_api_key(name: str = "deepseek") -> None:
     data = _read()
-    if data.pop("deepseek", None) is not None:
+    if data.pop(name, None) is not None:
         with open(_path(), "w", encoding="utf-8") as f:
             json.dump(data, f)
 

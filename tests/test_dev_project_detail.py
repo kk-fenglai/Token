@@ -185,3 +185,89 @@ def test_routes(repo, monkeypatch):
     monkeypatch.setattr(dpd, "open_in_editor", lambda p: opened.append(p) or True)
     assert client.post("/api/dev-projects/open-editor", json={"path": repo}, headers=LOCAL).json() == {"ok": True}
     assert opened == [repo]
+
+
+# ------------------------------------------------------- priority & todos ----
+
+def test_meta_priority(fresh_db):
+    fields, errors = dpd.clean_meta({"priority": "P1"})
+    assert errors == [] and fields == {"priority": "P1"}
+    assert dpd.clean_meta({"priority": "P9"})[1]
+    assert dpd.save_meta("c:/a", {"priority": "P0"})["priority"] == "P0"
+    assert dpd.get_meta("c:/a")["priority"] == "P0"
+
+
+def test_meta_priority_migrates_old_table(fresh_db):
+    fresh_db.execute("CREATE TABLE dev_project_meta (path TEXT PRIMARY KEY, alias TEXT NOT NULL DEFAULT '', "
+                     "description TEXT NOT NULL DEFAULT '', tags TEXT NOT NULL DEFAULT '[]', "
+                     "stage TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', updated_at TEXT)")
+    fresh_db.execute("INSERT INTO dev_project_meta(path, alias) VALUES('c:/old', 'Old')")
+    fresh_db.commit()
+    assert dpd.get_meta("c:/old")["priority"] == "" and dpd.get_meta("c:/old")["alias"] == "Old"
+
+
+def test_todos_order_and_summary(fresh_db):
+    a = dpd.add_todo("c:/a", "low", "P3")
+    b = dpd.add_todo("c:/a", "urgent", "P0")
+    c = dpd.add_todo("c:/a", "also urgent", "P0")
+    dpd.add_todo("c:/b", "other project")
+    assert [t["text"] for t in dpd.list_todos("c:/a")] == ["urgent", "also urgent", "low"]
+    done = dpd.update_todo(b["id"], {"done": True})
+    assert done["done"] and done["done_at"]
+    assert [t["text"] for t in dpd.list_todos("c:/a")] == ["also urgent", "low", "urgent"]
+    s = dpd.todo_summary()
+    assert s["c:/a"]["open"] == 2 and s["c:/a"]["done"] == 1 and s["c:/a"]["next"]["id"] == c["id"]
+    assert s["c:/b"]["next"]["priority"] == "P2"
+    assert dpd.update_todo(b["id"], {"done": False})["done_at"] is None
+    assert dpd.update_todo(a["id"], {"text": "renamed", "priority": "P1"})["priority"] == "P1"
+    dpd.delete_todo(a["id"])
+    with pytest.raises(dpd.TodoNotFound):
+        dpd.get_todo(a["id"])
+
+
+def test_clean_todo():
+    assert dpd.clean_todo({"text": "  x  ", "priority": "P1"}, partial=False) == ({"text": "x", "priority": "P1"}, [])
+    assert dpd.clean_todo({"priority": "P1"}, partial=False)[1]  # text required on create
+    assert dpd.clean_todo({"done": True}, partial=True) == ({"done": True}, [])
+    assert len(dpd.clean_todo({"text": "", "priority": "P5", "done": 1, "x": 1}, partial=True)[1]) == 4
+
+
+@needs_git
+def test_todo_routes(repo):
+    from tokenscope.web import app
+    client = TestClient(app)
+    r = client.post("/api/dev-projects/todos", json={"path": repo, "text": "写测试", "priority": "P1"}, headers=LOCAL)
+    assert r.status_code == 200
+    tid = r.json()["id"]
+    assert client.post("/api/dev-projects/todos", json={"path": "c:/nope", "text": "x"}, headers=LOCAL).status_code == 404
+    assert client.post("/api/dev-projects/todos", json={"path": repo, "text": " "}, headers=LOCAL).status_code == 422
+    assert client.post("/api/dev-projects/todos", json={"path": repo, "text": "x"},
+                       headers={"host": "evil.example"}).status_code == 403
+    assert client.get(f"/api/dev-projects/todos?path={repo}", headers=LOCAL).json()[0]["text"] == "写测试"
+    item = client.get("/api/dev-projects").json()["items"][0]
+    assert item["todos"]["open"] == 1 and item["todos"]["next"]["id"] == tid
+    assert client.get(f"/api/dev-projects/detail?path={repo}", headers=LOCAL).json()["todos"][0]["id"] == tid
+
+    assert client.patch(f"/api/dev-projects/todos/{tid}", json={"done": True}, headers=LOCAL).json()["done"]
+    assert client.patch(f"/api/dev-projects/todos/{tid}", json={"priority": "P7"}, headers=LOCAL).status_code == 422
+    assert client.patch("/api/dev-projects/todos/99999", json={"done": True}, headers=LOCAL).status_code == 404
+    assert client.delete(f"/api/dev-projects/todos/{tid}", headers=LOCAL).json() == {"ok": True}
+    assert client.delete(f"/api/dev-projects/todos/{tid}", headers=LOCAL).status_code == 404
+
+
+def test_manual_order(fresh_db):
+    items = [{"path": "a"}, {"path": "b"}, {"path": "c"}, {"path": "d"}]
+    assert dpd.apply_order(items, dpd.get_order()) == items
+    dpd.save_order(["c", "a"])
+    assert [x["path"] for x in dpd.apply_order(items, dpd.get_order())] == ["c", "a", "b", "d"]
+
+
+@needs_git
+def test_order_route_and_todo_items(repo):
+    from tokenscope.web import app
+    client = TestClient(app)
+    assert client.put("/api/dev-projects/order", json={"paths": [repo]}, headers=LOCAL).json() == {"ok": True}
+    assert client.put("/api/dev-projects/order", json={"paths": "x"}, headers=LOCAL).status_code == 422
+    client.post("/api/dev-projects/todos", json={"path": repo, "text": "a"}, headers=LOCAL)
+    item = client.get("/api/dev-projects").json()["items"][0]
+    assert [t["text"] for t in item["todo_items"]] == ["a"]

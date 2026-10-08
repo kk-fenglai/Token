@@ -21,8 +21,13 @@ def _with_meta(snap: dict) -> dict:
     """Attach the F28 user notes to each row. Done per request rather than in
     the cached snapshot, so an edit shows up without waiting for the TTL."""
     metas = dev_project_detail.all_meta()
+    todos = dev_project_detail.todo_summary()
+    todo_items = dev_project_detail.all_todos()
     empty = dev_project_detail.EMPTY_META
-    return {**snap, "items": [{**x, "meta": metas.get(x["path"], empty)} for x in snap["items"]]}
+    no_todos = {"open": 0, "done": 0, "next": None}
+    items = dev_project_detail.apply_order(snap["items"], dev_project_detail.get_order())
+    return {**snap, "items": [{**x, "meta": metas.get(x["path"], empty), "todos": todos.get(x["path"], no_todos),
+                               "todo_items": todo_items.get(x["path"], [])} for x in items]}
 
 
 def _snapshot_with_meta(force: bool = False) -> dict:
@@ -211,3 +216,68 @@ async def github_description(body: dict, request: Request):
         return await asyncio.to_thread(dev_project_detail.push_github_description, path, desc)
     except dev_project_detail.NotTracked:
         raise HTTPException(status_code=404, detail={"code": "not_tracked", "detail": path}) from None
+
+
+@router.put("/dev-projects/order")
+async def put_order(body: dict, request: Request):
+    """Body: {paths: [...]} — the full list order after a drag, top first."""
+    _require_local(request)
+    paths = body.get("paths") if isinstance(body, dict) else None
+    if not (isinstance(paths, list) and all(isinstance(x, str) for x in paths)):
+        raise HTTPException(status_code=422, detail={"code": "bad_request", "detail": "paths must be a list of strings"})
+    await asyncio.to_thread(dev_project_detail.save_order, paths)
+    return {"ok": True}
+
+
+# ------------------------------------------------------------- todos ----
+
+def _todo_error(errors: list[str]) -> HTTPException:
+    return HTTPException(status_code=422, detail={"code": "bad_request", "detail": errors})
+
+
+def _todo_missing(todo_id: int) -> HTTPException:
+    return HTTPException(status_code=404, detail={"code": "not_found", "detail": todo_id})
+
+
+@router.get("/dev-projects/todos")
+async def list_todos(path: str, request: Request):
+    _require_local(request)
+    return await asyncio.to_thread(dev_project_detail.list_todos, path)
+
+
+@router.post("/dev-projects/todos")
+async def add_todo(body: dict, request: Request):
+    """Body: {path, text, priority?: P0..P3 (default P2)}."""
+    _require_local(request)
+    path = _path_of(body)
+    fields, errors = dev_project_detail.clean_todo(body, partial=False)
+    if errors:
+        raise _todo_error(errors)
+    try:
+        await asyncio.to_thread(dev_project_detail.tracked_item, path)
+    except dev_project_detail.NotTracked:
+        raise HTTPException(status_code=404, detail={"code": "not_tracked", "detail": path}) from None
+    return await asyncio.to_thread(dev_project_detail.add_todo, path, fields["text"], fields.get("priority", "P2"))
+
+
+@router.patch("/dev-projects/todos/{todo_id}")
+async def update_todo(todo_id: int, body: dict, request: Request):
+    """Partial update of text / priority / done."""
+    _require_local(request)
+    fields, errors = dev_project_detail.clean_todo(body, partial=True)
+    if errors:
+        raise _todo_error(errors)
+    try:
+        return await asyncio.to_thread(dev_project_detail.update_todo, todo_id, fields)
+    except dev_project_detail.TodoNotFound:
+        raise _todo_missing(todo_id) from None
+
+
+@router.delete("/dev-projects/todos/{todo_id}")
+async def delete_todo(todo_id: int, request: Request):
+    _require_local(request)
+    try:
+        await asyncio.to_thread(dev_project_detail.delete_todo, todo_id)
+    except dev_project_detail.TodoNotFound:
+        raise _todo_missing(todo_id) from None
+    return {"ok": True}

@@ -35,9 +35,9 @@ MCP_TOOLS: dict[str, Kind] = {
     "get_subscription_savings": "read", "get_project_share": "read", "get_project_grouping": "read",
     "get_sessions": "read", "get_session_detail": "read", "get_tools_breakdown": "read",
     "get_heatmap": "read", "get_alerts": "read", "get_dev_projects": "read",
-    "get_weekly_report": "read", "get_retention_status": "read",
+    "get_weekly_report": "read", "get_retention_status": "read", "get_project_todos": "read",
     "update_pricing": "write", "set_subscription": "write", "set_project_alias": "write",
-    "set_workspace_roots": "write",
+    "set_workspace_roots": "write", "add_project_todo": "write",
 }
 # Deliberately NOT exposed: launch_dashboard (we are the dashboard),
 # platform_push / platform_status / set_session_requirement (AIPM platform

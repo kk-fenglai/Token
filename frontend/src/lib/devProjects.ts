@@ -1,4 +1,4 @@
-import type { DevProjectItem, DevProjectLevel, DevProjectsConfig } from "../api/types";
+import type { DevPriority, DevProjectItem, DevProjectLevel, DevProjectsConfig } from "../api/types";
 import type { TFunc } from "../i18n";
 
 export const LEVEL_BADGE: Record<DevProjectLevel, { cls: string; icon: string }> = {
@@ -36,6 +36,22 @@ export async function putConfig(partial: Partial<DevProjectsConfig>): Promise<vo
 
 export async function postJson(url: string, body: unknown): Promise<Response> {
   return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+}
+
+export const PRIORITY_BADGE: Record<DevPriority, string> = {
+  P0: "bg-error-container text-on-error-container",
+  P1: "bg-secondary-container/25 text-secondary",
+  P2: "bg-primary-container/10 text-primary-container",
+  P3: "bg-surface text-on-surface-variant",
+};
+
+/** Sort rank of a project / todo priority; unset sorts last. */
+export const priorityRank = (p: DevPriority | "" | undefined) => (p ? Number(p[1]) : 9);
+
+export async function sendJson(url: string, method: string, body?: unknown): Promise<Response> {
+  return fetch(url, {
+    method, headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body),
+  });
 }
 
 export const detailHref = (path: string) => `/dev-projects/detail?path=${encodeURIComponent(path)}`;

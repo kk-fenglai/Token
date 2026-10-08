@@ -498,6 +498,42 @@ def get_dev_projects(refresh: bool = False) -> dict:
 
 
 @mcp.tool()
+def get_project_todos(include_done: bool = False) -> dict:
+    """The user's next steps per local dev project, for "what should I work
+    on next?". Projects are ordered by the user's project priority (P0 most
+    urgent … P3, unset last); each carries its open todos ordered P0→P3 then
+    oldest first. include_done=True also returns finished todos."""
+    _ensure_ready()
+    from . import dev_project_detail as dpd, dev_projects
+    metas = dpd.all_meta()
+    rank = {p: i for i, p in enumerate(dpd.PRIORITIES)}
+    out = []
+    for item in dev_projects.snapshot()["items"]:
+        meta = metas.get(item["path"], dpd.EMPTY_META)
+        todos = [t for t in dpd.list_todos(item["path"]) if include_done or not t["done"]]
+        out.append({"path": item["path"], "name": meta["alias"] or item["name"], "priority": meta["priority"],
+                    "stage": meta["stage"], "todos": todos})
+    out.sort(key=lambda x: rank.get(x["priority"], len(rank)))
+    return {"projects": out, "priorities": list(dpd.PRIORITIES)}
+
+
+@mcp.tool()
+def add_project_todo(path: str, text: str, priority: str = "P2") -> dict:
+    """Add a next-step todo to a tracked dev project (path exactly as
+    get_dev_projects returns it). priority: P0 (urgent) / P1 / P2 / P3."""
+    _ensure_ready()
+    from . import dev_project_detail as dpd
+    fields, errors = dpd.clean_todo({"text": text, "priority": priority}, partial=False)
+    if errors:
+        return {"error": "; ".join(errors)}
+    try:
+        dpd.tracked_item(path)
+    except dpd.NotTracked:
+        return {"error": f"not a tracked project: {path}"}
+    return dpd.add_todo(path, fields["text"], fields["priority"])
+
+
+@mcp.tool()
 def get_weekly_report(weeks_ago: int = 0, project: str | None = None,
                       lang: str = "zh") -> dict:
     """Monday-to-Sunday digest: totals with week-over-week deltas, cost per

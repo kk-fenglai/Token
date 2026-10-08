@@ -4,9 +4,10 @@ import type { DevProjectDetail as Detail, DevProjectMeta } from "../api/types";
 import { useApi } from "../api/useApi";
 import PublishDialog from "../components/PublishDialog";
 import StatCard from "../components/StatCard";
+import TodoPanel from "../components/TodoPanel";
 import { useI18n } from "../i18n";
 import { useMoney } from "../lib/currency";
-import { LEVEL_BADGE, canPublish, postJson, putConfig, reasonText } from "../lib/devProjects";
+import { LEVEL_BADGE, PRIORITY_BADGE, canPublish, postJson, putConfig, reasonText } from "../lib/devProjects";
 import { formatLocalTime, formatRelative, formatTokens } from "../lib/format";
 import { Markdown } from "../lib/markdown";
 
@@ -17,7 +18,7 @@ const LANG_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"];
 const OTHER_COLOR = "#a3a29a";
 const TOP_LANGS = LANG_COLORS.length;
 
-type Form = Pick<DevProjectMeta, "alias" | "description" | "tags" | "stage" | "notes">;
+type Form = Pick<DevProjectMeta, "alias" | "description" | "tags" | "stage" | "priority" | "notes">;
 
 export default function DevProjectDetail() {
   const { t, tag } = useI18n();
@@ -45,7 +46,7 @@ export default function DevProjectDetail() {
   useEffect(() => {
     if (d && !editing) {
       const m = d.meta;
-      setForm({ alias: m.alias, description: m.description, tags: m.tags, stage: m.stage, notes: m.notes });
+      setForm({ alias: m.alias, description: m.description, tags: m.tags, stage: m.stage, priority: m.priority, notes: m.notes });
     }
   }, [d, editing]);
 
@@ -160,6 +161,9 @@ export default function DevProjectDetail() {
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               {p.pinned && <span className="material-symbols-outlined text-[22px] text-primary-container">push_pin</span>}
+              {m.priority && (
+                <span className={`rounded px-1.5 py-0.5 text-xs font-bold ${PRIORITY_BADGE[m.priority]}`}>{t(`devTodos.priorities.${m.priority}`)}</span>
+              )}
               <h3 className="text-2xl font-bold">{m.alias || p.name}</h3>
               {m.alias && <span className="text-sm text-outline">{p.name}</span>}
               <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${b.cls}`}>
@@ -222,6 +226,13 @@ export default function DevProjectDetail() {
                 className="w-full rounded border border-border-card bg-surface px-3 py-1.5 text-sm">
                 <option value="">{t("devDetail.stageNone")}</option>
                 {d.stages.map((s) => <option key={s} value={s}>{t(`devDetail.stages.${s}`)}</option>)}
+              </select>
+            </Labeled>
+            <Labeled label={t("devTodos.priority")}>
+              <select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value as Form["priority"] })}
+                className="w-full rounded border border-border-card bg-surface px-3 py-1.5 text-sm">
+                <option value="">{t("devTodos.priorityNone")}</option>
+                {d.priorities.map((x) => <option key={x} value={x}>{t(`devTodos.priorities.${x}`)}</option>)}
               </select>
             </Labeled>
             <div className="md:col-span-2">
@@ -303,6 +314,8 @@ export default function DevProjectDetail() {
       <div className="grid gap-6 xl:grid-cols-3">
         {/* ------------------------------------------------------ main column */}
         <div className="space-y-6 xl:col-span-2">
+          <TodoPanel path={p.path} initial={d.todos} />
+
           <Card title={t("devDetail.about")} icon="info"
             extra={p.is_github && m.description ? (
               <button onClick={syncGithub} disabled={ghState === "busy"} title={t("devDetail.syncGithubHint")}

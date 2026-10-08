@@ -421,6 +421,8 @@ export interface DevProjectItem {
   reasons: string[];
   /** F28 user notes; absent on responses that bypass the list route. */
   meta?: DevProjectMeta;
+  todos?: { open: number; done: number; next: DevProjectTodo | null };
+  todo_items?: DevProjectTodo[];
 }
 
 export interface DevProjectsSummary {
@@ -485,17 +487,29 @@ export interface PublishResult {
 }
 
 export type DevProjectStage = "idea" | "active" | "maintenance" | "paused" | "archived";
+export type DevPriority = "P0" | "P1" | "P2" | "P3";
+export interface DevProjectTodo {
+  id: number;
+  path: string;
+  text: string;
+  priority: DevPriority;
+  done: boolean;
+  created_at: string;
+  done_at: string | null;
+}
 export interface DevProjectMeta {
   alias: string;
   description: string;
   tags: string[];
   stage: DevProjectStage | "";
+  priority: DevPriority | "";
   notes: string;
   updated_at: string | null;
 }
 export interface DevProjectDetail {
   item: DevProjectItem;
   meta: DevProjectMeta;
+  todos: DevProjectTodo[];
   readme: { file: string; content: string; truncated: boolean; markdown: boolean; title: string | null; summary: string | null } | null;
   languages: { name: string; bytes: number; pct: number }[];
   stack: string[];
@@ -511,6 +525,7 @@ export interface DevProjectDetail {
   tokens: { key: string; name: string; tokens: number; cost: number; sessions: number; month_tokens: number; last_active: string | null; same_path: boolean } | null;
   editor: boolean;
   stages: DevProjectStage[];
+  priorities: DevPriority[];
 }
 
 // ------------------------------------------------------------- F29 agent ----

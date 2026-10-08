@@ -1,8 +1,10 @@
 """F28 — dev-project detail page: an overview of one tracked repo plus the
 user's own notes about it.
 
-  Meta (user-authored)  alias / description / tags / stage / notes, stored in
-                        the `dev_project_meta` table keyed by normalized path.
+  Meta (user-authored)  alias / description / tags / stage / priority / notes,
+                        stored in `dev_project_meta` keyed by normalized path.
+  Todos (user-authored) a prioritized next-steps list per project, in
+                        `dev_project_todos`.
   Overview (derived)    README excerpt, languages by bytes from `git ls-files`,
                         a detected stack (package.json / pyproject / …), git
                         history and branches, and the Token usage of the
@@ -30,6 +32,8 @@ except ModuleNotFoundError:  # Python 3.10: no stdlib TOML reader, skip pyprojec
     tomllib = None
 
 STAGES = ("idea", "active", "maintenance", "paused", "archived")
+PRIORITIES = ("P0", "P1", "P2", "P3")
+MAX_TODO_LEN = 500
 MAX_README_BYTES = 200_000
 MAX_LS_FILES = 20_000
 MAX_STAT_FILES = 8_000
@@ -102,11 +106,34 @@ CREATE TABLE IF NOT EXISTS dev_project_meta (
 )
 """
 
-EMPTY_META = {"alias": "", "description": "", "tags": [], "stage": "", "notes": "", "updated_at": None}
+_TODO_SCHEMA = """
+CREATE TABLE IF NOT EXISTS dev_project_todos (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  path        TEXT NOT NULL,
+  text        TEXT NOT NULL,
+  priority    TEXT NOT NULL DEFAULT 'P2',
+  done        INTEGER NOT NULL DEFAULT 0,
+  created_at  TEXT NOT NULL,
+  done_at     TEXT
+)
+"""
+
+EMPTY_META = {"alias": "", "description": "", "tags": [], "stage": "", "priority": "", "notes": "",
+              "updated_at": None}
 
 
 def _ensure(conn) -> None:
     conn.execute(_SCHEMA)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(dev_project_meta)")}
+    if "priority" not in cols:  # added after F28 shipped
+        conn.execute("ALTER TABLE dev_project_meta ADD COLUMN priority TEXT NOT NULL DEFAULT ''")
+    conn.execute(_TODO_SCHEMA)
+    conn.execute("CREATE TABLE IF NOT EXISTS dev_project_order (path TEXT PRIMARY KEY, pos INTEGER NOT NULL)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_dev_todos_path ON dev_project_todos(path, done)")
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _row_meta(row) -> dict:
@@ -116,7 +143,7 @@ def _row_meta(row) -> dict:
         tags = []
     return {"alias": row["alias"], "description": row["description"],
             "tags": [t for t in tags if isinstance(t, str)], "stage": row["stage"],
-            "notes": row["notes"], "updated_at": row["updated_at"]}
+            "priority": row["priority"], "notes": row["notes"], "updated_at": row["updated_at"]}
 
 
 def get_meta(path: str) -> dict:
@@ -165,7 +192,13 @@ def clean_meta(body: dict) -> tuple[dict, list[str]]:
             errors.append(f"stage must be one of {', '.join(STAGES)} or empty")
         else:
             out["stage"] = v
-    unknown = set(body) - set(FIELD_LIMITS) - {"tags", "stage", "path"}
+    if "priority" in body:
+        v = body["priority"]
+        if v not in ("", *PRIORITIES):
+            errors.append(f"priority must be one of {', '.join(PRIORITIES)} or empty")
+        else:
+            out["priority"] = v
+    unknown = set(body) - set(FIELD_LIMITS) - {"tags", "stage", "priority", "path"}
     if unknown:
         errors.append(f"unknown keys: {', '.join(sorted(unknown))}")
     return out, errors
@@ -173,19 +206,169 @@ def clean_meta(body: dict) -> tuple[dict, list[str]]:
 
 def save_meta(path: str, fields: dict) -> dict:
     merged = {**get_meta(path), **fields}
-    merged["updated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    merged["updated_at"] = _now()
     with locked_conn() as conn:
         _ensure(conn)
         conn.execute(
-            "INSERT INTO dev_project_meta(path, alias, description, tags, stage, notes, updated_at) "
-            "VALUES(?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET alias=excluded.alias, "
+            "INSERT INTO dev_project_meta(path, alias, description, tags, stage, priority, notes, updated_at) "
+            "VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET alias=excluded.alias, "
             "description=excluded.description, tags=excluded.tags, stage=excluded.stage, "
-            "notes=excluded.notes, updated_at=excluded.updated_at",
+            "priority=excluded.priority, notes=excluded.notes, updated_at=excluded.updated_at",
             (path, merged["alias"], merged["description"], json.dumps(merged["tags"], ensure_ascii=False),
-             merged["stage"], merged["notes"], merged["updated_at"]),
+             merged["stage"], merged["priority"], merged["notes"], merged["updated_at"]),
         )
         conn.commit()
     return merged
+
+
+# ------------------------------------------------------------------ todos ----
+
+class TodoNotFound(Exception):
+    pass
+
+
+def _row_todo(row) -> dict:
+    return {"id": row["id"], "path": row["path"], "text": row["text"], "priority": row["priority"],
+            "done": bool(row["done"]), "created_at": row["created_at"], "done_at": row["done_at"]}
+
+
+# Open first by P0..P3 then oldest; done items after, most recently finished first.
+_TODO_ORDER = ("done, CASE WHEN done=0 THEN priority END, CASE WHEN done=0 THEN id END, "
+               "done_at DESC, id DESC")
+
+
+def list_todos(path: str) -> list[dict]:
+    with locked_conn() as conn:
+        _ensure(conn)
+        rows = conn.execute(f"SELECT * FROM dev_project_todos WHERE path=? ORDER BY {_TODO_ORDER}",
+                            (path,)).fetchall()
+    return [_row_todo(r) for r in rows]
+
+
+def clean_todo(body: dict, *, partial: bool) -> tuple[dict, list[str]]:
+    """Validate a todo create (partial=False needs text) or update."""
+    out: dict = {}
+    errors: list[str] = []
+    if "text" in body or not partial:
+        v = body.get("text")
+        if not isinstance(v, str) or not v.strip():
+            errors.append("text must be a non-empty string")
+        elif len(v) > MAX_TODO_LEN:
+            errors.append(f"text is longer than {MAX_TODO_LEN} characters")
+        else:
+            out["text"] = v.strip()
+    if "priority" in body:
+        if body["priority"] not in PRIORITIES:
+            errors.append(f"priority must be one of {', '.join(PRIORITIES)}")
+        else:
+            out["priority"] = body["priority"]
+    if "done" in body:
+        if not isinstance(body["done"], bool):
+            errors.append("done must be a boolean")
+        else:
+            out["done"] = body["done"]
+    unknown = set(body) - {"text", "priority", "done", "path"}
+    if unknown:
+        errors.append(f"unknown keys: {', '.join(sorted(unknown))}")
+    return out, errors
+
+
+def add_todo(path: str, text: str, priority: str = "P2") -> dict:
+    with locked_conn() as conn:
+        _ensure(conn)
+        cur = conn.execute("INSERT INTO dev_project_todos(path, text, priority, created_at) VALUES(?,?,?,?)",
+                           (path, text, priority, _now()))
+        conn.commit()
+        row = conn.execute("SELECT * FROM dev_project_todos WHERE id=?", (cur.lastrowid,)).fetchone()
+    return _row_todo(row)
+
+
+def get_todo(todo_id: int) -> dict:
+    with locked_conn() as conn:
+        _ensure(conn)
+        row = conn.execute("SELECT * FROM dev_project_todos WHERE id=?", (todo_id,)).fetchone()
+    if row is None:
+        raise TodoNotFound(todo_id)
+    return _row_todo(row)
+
+
+def update_todo(todo_id: int, fields: dict) -> dict:
+    cur = get_todo(todo_id)
+    sets, args = [], []
+    for k in ("text", "priority"):
+        if k in fields:
+            sets.append(f"{k}=?")
+            args.append(fields[k])
+    if "done" in fields and fields["done"] != cur["done"]:
+        sets += ["done=?", "done_at=?"]
+        args += [int(fields["done"]), _now() if fields["done"] else None]
+    if sets:
+        with locked_conn() as conn:
+            conn.execute(f"UPDATE dev_project_todos SET {', '.join(sets)} WHERE id=?", (*args, todo_id))
+            conn.commit()
+    return get_todo(todo_id)
+
+
+def delete_todo(todo_id: int) -> None:
+    get_todo(todo_id)
+    with locked_conn() as conn:
+        conn.execute("DELETE FROM dev_project_todos WHERE id=?", (todo_id,))
+        conn.commit()
+
+
+def todo_summary() -> dict[str, dict]:
+    """Per path: open / done counts and the next open todo (highest priority, oldest)."""
+    with locked_conn() as conn:
+        _ensure(conn)
+        rows = conn.execute(f"SELECT * FROM dev_project_todos ORDER BY {_TODO_ORDER}").fetchall()
+    out: dict[str, dict] = {}
+    for r in rows:
+        s = out.setdefault(r["path"], {"open": 0, "done": 0, "next": None})
+        if r["done"]:
+            s["done"] += 1
+        else:
+            s["open"] += 1
+            if s["next"] is None:
+                s["next"] = _row_todo(r)
+    return out
+
+
+def all_todos() -> dict[str, list[dict]]:
+    """Every todo grouped by path, in list order."""
+    with locked_conn() as conn:
+        _ensure(conn)
+        rows = conn.execute(f"SELECT * FROM dev_project_todos ORDER BY {_TODO_ORDER}").fetchall()
+    out: dict[str, list[dict]] = {}
+    for r in rows:
+        out.setdefault(r["path"], []).append(_row_todo(r))
+    return out
+
+
+# ------------------------------------------------------------------ order ----
+
+def get_order() -> dict[str, int]:
+    """The user's drag-and-drop order: path -> position."""
+    with locked_conn() as conn:
+        _ensure(conn)
+        rows = conn.execute("SELECT path, pos FROM dev_project_order").fetchall()
+    return {r["path"]: r["pos"] for r in rows}
+
+
+def save_order(paths: list[str]) -> None:
+    """Replace the manual order with `paths` (first = top)."""
+    with locked_conn() as conn:
+        _ensure(conn)
+        conn.execute("DELETE FROM dev_project_order")
+        conn.executemany("INSERT OR IGNORE INTO dev_project_order(path, pos) VALUES(?,?)",
+                         [(x, i) for i, x in enumerate(paths)])
+        conn.commit()
+
+
+def apply_order(items: list[dict], order: dict[str, int]) -> list[dict]:
+    """Manually ordered projects first in their saved order; new ones after,
+    keeping the incoming order."""
+    big = len(order) + len(items)
+    return sorted(items, key=lambda x: order.get(x["path"], big))
 
 
 # ----------------------------------------------------------------- readme ----
@@ -482,6 +665,7 @@ def detail(path: str) -> dict:
     return {
         "item": info,
         "meta": get_meta(item["path"]),
+        "todos": list_todos(item["path"]),
         "readme": read_readme(fs),
         "languages": languages(fs, files),
         **detect_stack(fs, files),
@@ -489,6 +673,7 @@ def detail(path: str) -> dict:
         "tokens": token_usage(item["path"]),
         "editor": editor_path() is not None,
         "stages": list(STAGES),
+        "priorities": list(PRIORITIES),
     }
 
 
